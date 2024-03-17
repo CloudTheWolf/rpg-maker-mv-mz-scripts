@@ -29,6 +29,7 @@
                 this._list.splice(i, 1);
                 i--;
             } else if (this._list[i].symbol === 'bgmVolume') {
+                // Update BGM Volume label
                 this._list[i].name = bgmLabel;
             }
         }
