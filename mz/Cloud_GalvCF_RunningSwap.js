@@ -10,6 +10,12 @@
  * If base is "$teo_%(8)", running should be "$teo_running_%(8)".
  * If base is "MainHero%(8)", running is "MainHero_running%(8)".
  *
+ * Here us an example 8x4 sprite sheet
+ * | (Front) Right Foot Up | Ignore | (Front) Right Foot Forward | (Front) Right Foot Down | (Front) Left Foot Up | Ignored | (Front) Left Foot Forward | (Front) Left Foot Down |
+ * | (Left ) Right Foot Up | Ignore | (Left ) Right Foot Forward | (Left ) Right Foot Down | (Left ) Left Foot Up | Ignored | (Left ) Left Foot Forward | (Left ) Left Foot Down |
+ * | (Right) Right Foot Up | Ignore | (Right) Right Foot Forward | (Right) Right Foot Down | (Right) Left Foot Up | Ignored | (Right) Left Foot Forward | (Right) Left Foot Down |
+ * | (Up   ) Right Foot Up | Ignore | (Up   ) Right Foot Forward | (Up   ) Right Foot Down | (Up   ) Left Foot Up | Ignored | (Up   ) Left Foot Forward | (Up   ) Left Foot Down |
+ * 
  * No plugin commands.
  *
  * @param Affect Followers
@@ -18,6 +24,19 @@
  * @off No
  * @default true
  * @desc Also apply running-swap to party followers.
+ * 
+ * @param Running Wait Multiplier
+ * @type number
+ * @decimals 2
+ * @min 0.1
+ * @default 1.50
+ * @desc Multiplies frame wait while using the running sheet. >1 slows; <1 speeds.
+ * 
+ * @param Skip Frames While Running
+ * @type string
+ * @default 1,5
+ * @desc Comma-separated 0-based frame indexes to skip while the running sheet is active. Example: 1,5
+ * 
  */
 (() => {
     "use strict";
@@ -31,6 +50,13 @@
     // --- Params ---
     const _params = PluginManager.parameters("Cloud_GalvCF_RunningSwap");
     const AFFECT_FOLLOWERS = String(_params["Affect Followers"] ?? "true").toLowerCase() === "true";
+    const RUN_WAIT_MULT = Math.max(0.1, Number(_params["Running Wait Multiplier"] || 1.50));
+    const SKIP_FRAMES_RAW = String(_params["Skip Frames While Running"] ?? "1,5");
+    const SKIP_FRAMES = new Set(
+    SKIP_FRAMES_RAW.split(",")
+        .map(s => Number(s.trim()))
+        .filter(n => Number.isInteger(n) && n >= 0)
+    );
 
     function _cgrs_isTargetChar(ch) {
         return ch === $gamePlayer || (AFFECT_FOLLOWERS && ch instanceof Game_Follower);
@@ -55,7 +81,7 @@
         }
     }
 
-    const _SetImage = Game_CharacterBase.prototype.setImage; // (if not already hoisted)
+    const _SetImage = Game_CharacterBase.prototype.setImage; 
     Game_CharacterBase.prototype._cgrs_setImageInternal = function(name, index) {
         this._cgrs_internalSwap = true;
         _SetImage.call(this, name, index);
@@ -66,8 +92,25 @@
     const _FollowerUpdate = Game_Follower.prototype.update;
     const _PlayerRefresh = Game_Player.prototype.refresh;
     const _FollowerRefresh = Game_Follower.prototype.refresh;
-
+    const _CGRS_animWait = Game_CharacterBase.prototype.animationWait;
     const _GCB_initMembers = Game_CharacterBase.prototype.initMembers;
+    const _CGRS_updatePattern = Game_CharacterBase.prototype.updatePattern;
+
+    Game_CharacterBase.prototype.updatePattern = function () {
+        _CGRS_updatePattern.call(this);
+
+        if (!this._cgrs_usingRunning || !this.isMoving()) return;
+
+        const cframes = this._cframes || 3;
+        const max     = cframes + (this._spattern || 0);
+
+        let guard = 0;
+        while (this._pattern < cframes && SKIP_FRAMES.has(this._pattern) && guard < cframes) {
+            this._pattern = (this._pattern + 1) % max;
+            guard++;
+        }
+    };
+
     Game_CharacterBase.prototype.initMembers = function() {
         _GCB_initMembers.call(this);
         this._cgrs_baseName = null;
@@ -160,11 +203,18 @@
         _SetImage.call(this, this.characterName(), this.characterIndex());
     };
 
-
     Game_Follower.prototype.refresh = function() {
         _FollowerRefresh.call(this);
         this._cgrs_setImageInternal(this.characterName(), this.characterIndex());
         this._cgrs_usingRunning = false;
+    };
+
+    Game_CharacterBase.prototype.animationWait = function () {
+        let wait = _CGRS_animWait.call(this);
+        if (this._cgrs_usingRunning && RUN_WAIT_MULT !== 1) {
+            wait = Math.max(1, Math.round(wait * RUN_WAIT_MULT));
+        }
+        return wait;
     };
 
 })();
