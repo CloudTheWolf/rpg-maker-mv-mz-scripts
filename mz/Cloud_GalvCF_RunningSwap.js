@@ -7,8 +7,7 @@
  * @help
  * Place this plugin BELOW "GALV_CharacterFramesMZ.js".
  *
- * If base is "$teo_%(8)", running should be "$teo_running_%(8)".
- * If base is "MainHero%(8)", running is "MainHero_running%(8)".
+ * Example: If base is "$teo_%(8)", running should be "$teo_running_%(8)".
  *
  * Here us an example 8x4 sprite sheet
  * | (Front) Right Foot Up | Ignore | (Front) Right Foot Forward | (Front) Right Foot Down | (Front) Left Foot Up | Ignored | (Front) Left Foot Forward | (Front) Left Foot Down |
@@ -37,6 +36,12 @@
  * @default 1,5
  * @desc Comma-separated 0-based frame indexes to skip while the running sheet is active. Example: 1,5
  * 
+ * @param Movement Grace Frames
+ * @type number
+ * @min 0
+ * @default 2
+ * @desc Frames to keep using the running sheet after movement briefly pauses (prevents flicker between steps).
+ * 
  */
 (() => {
     "use strict";
@@ -52,6 +57,7 @@
     const AFFECT_FOLLOWERS = String(_params["Affect Followers"] ?? "true").toLowerCase() === "true";
     const RUN_WAIT_MULT = Math.max(0.1, Number(_params["Running Wait Multiplier"] || 1.50));
     const SKIP_FRAMES_RAW = String(_params["Skip Frames While Running"] ?? "1,5");
+    const MOVE_GRACE = Math.max(0, Number(_params["Movement Grace Frames"] ?? 2));
     const SKIP_FRAMES = new Set(
     SKIP_FRAMES_RAW.split(",")
         .map(s => Number(s.trim()))
@@ -81,12 +87,80 @@
         }
     }
 
-    const _SetImage = Game_CharacterBase.prototype.setImage; 
-    Game_CharacterBase.prototype._cgrs_setImageInternal = function(name, index) {
-        this._cgrs_internalSwap = true;
-        _SetImage.call(this, name, index);
-        this._cgrs_internalSwap = false;
+    // Remove our running marker from a name (handles "_running" and "running_" before %(x), or trailing "_running")
+    function stripRunningName(originalName) {
+    if (!originalName) return originalName;
+    const prefixMatch = originalName.match(/^[!$]+/);
+    const prefix = prefixMatch ? prefixMatch[0] : "";
+    const core = originalName.slice(prefix.length);
+
+    if (CF_REGEX && CF_REGEX.test(core)) {
+        CF_REGEX.lastIndex = 0;
+        const ex = CF_REGEX.exec(core); // has index
+        if (ex) {
+        const idx = ex.index;
+        const before = core.slice(0, idx);
+        const after  = core.slice(idx);               // starts at "%(x)"
+        if (before.endsWith("_running"))  return prefix + before.slice(0, -8) + after;
+        if (before.endsWith("running_"))  return prefix + before.slice(0, -8) + after;
+        return prefix + core;
+        }
+    }
+    // No %(x) tag: check simple suffix
+    if (core.endsWith("_running")) return prefix + core.slice(0, -8);
+    return prefix + core;
+    }
+
+
+    const _SetImage = Game_CharacterBase.prototype.setImage;
+
+    Game_CharacterBase.prototype.setImage = function (characterName, characterIndex) {
+    _SetImage.call(this, characterName, characterIndex);
+
+    if (!_cgrs_isTargetChar(this)) return;
+    if (this._cgrs_internalSwap) return; // our own swap
+
+    // Determine true base vs running from the incoming name
+    const incoming = characterName || "";
+    const strippedBase = stripRunningName(incoming);
+    const isIncomingRunning = incoming !== strippedBase;
+
+    // Fix base and running names from the stripped base
+    this._cgrs_baseName   = strippedBase;
+    this._cgrs_baseIndex  = characterIndex || 0;
+    this._cgrs_runningName  = makeRunningName(this._cgrs_baseName);
+    this._cgrs_runningIndex = this._cgrs_baseIndex;
+
+    // Set current state to match what was just applied
+    this._cgrs_usingRunning = isIncomingRunning;
+
+    // (Re)probe running sheet existence once per base
+    this._cgrs_runningCheckDone = false;
+    this._cgrs_runningExists = false;
+    if (this._cgrs_runningName) {
+        const bmp = ImageManager.loadCharacter(this._cgrs_runningName);
+        this._cgrs_runningBitmap = bmp;
+        bmp.addLoadListener(() => {
+        this._cgrs_runningCheckDone = true;
+        this._cgrs_runningExists = true;
+        });
+        const pollErr = () => {
+        if (!this || !this._cgrs_runningBitmap) return;
+        const b = this._cgrs_runningBitmap;
+        if (b.isError && b.isError()) {
+            this._cgrs_runningCheckDone = true;
+            this._cgrs_runningExists = false;
+        } else if (!this._cgrs_runningCheckDone) {
+            setTimeout(pollErr, 60);
+        }
+        };
+        setTimeout(pollErr, 60);
+    }
+
+    // Reset grace window
+    this._cgrs_moveGrace = 0;
     };
+
     const _PlayerInitMembers = Game_Player.prototype.initMembers;
     const _PlayerUpdate = Game_Player.prototype.update;
     const _FollowerUpdate = Game_Follower.prototype.update;
@@ -167,25 +241,40 @@
         }
     };
 
-    Game_Player.prototype._cgrs_setImageInternal = function(name, index) {
-        this._cgrs_internalSwap = true;
-        _SetImage.call(this, name, index);
-        this._cgrs_internalSwap = false;
-    };
+    // --- Ensure internal swap helper exists (player + followers) ---
+    if (!Game_CharacterBase.prototype._cgrs_setImageInternal) {
+        Game_CharacterBase.prototype._cgrs_setImageInternal = function(name, index) {
+            this._cgrs_internalSwap = true;
+            Game_CharacterBase.prototype.setImage.call(this, name, index);
+            this._cgrs_internalSwap = false;
+        };
+    }
 
-    Game_CharacterBase.prototype._cgrs_applyRunningStateIfNeeded = function() {
-        if (!_cgrs_isTargetChar(this)) return;
-        if (!this._cgrs_runningCheckDone || !this._cgrs_runningExists) return;
+    Game_CharacterBase.prototype._cgrs_applyRunningStateIfNeeded = function () {
+    if (!_cgrs_isTargetChar(this)) return;
+    if (!this._cgrs_runningCheckDone || !this._cgrs_runningExists) return;
 
-        const shouldUseRunning = this.isMoving() && $gamePlayer.isDashing();
+    // Maintain a small grace so tiny pauses don't flip back to base
+    if (this.isMoving()) {
+        this._cgrs_moveGrace = MOVE_GRACE;
+    } else if (this._cgrs_moveGrace > 0) {
+        this._cgrs_moveGrace--;
+    }
 
-        if (shouldUseRunning && !this._cgrs_usingRunning) {
-            this._cgrs_setImageInternal(this._cgrs_runningName, this._cgrs_runningIndex);
-            this._cgrs_usingRunning = true;
-        } else if (!shouldUseRunning && this._cgrs_usingRunning) {
-            this._cgrs_setImageInternal(this._cgrs_baseName, this._cgrs_baseIndex);
-            this._cgrs_usingRunning = false;
+    const wantsRunning = $gamePlayer.isDashing() && (this.isMoving() || this._cgrs_moveGrace > 0);
+
+    // Only swap if the target image actually differs (prevents churn)
+    if (wantsRunning && !this._cgrs_usingRunning) {
+        if (this.characterName() !== this._cgrs_runningName || this.characterIndex() !== this._cgrs_runningIndex) {
+        this._cgrs_setImageInternal(this._cgrs_runningName, this._cgrs_runningIndex);
         }
+        this._cgrs_usingRunning = true;
+    } else if (!wantsRunning && this._cgrs_usingRunning) {
+        if (this.characterName() !== this._cgrs_baseName || this.characterIndex() !== this._cgrs_baseIndex) {
+        this._cgrs_setImageInternal(this._cgrs_baseName, this._cgrs_baseIndex);
+        }
+        this._cgrs_usingRunning = false;
+    }
     };
 
     Game_Player.prototype.update = function(sceneActive) {
