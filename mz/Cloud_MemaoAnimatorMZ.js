@@ -9,9 +9,9 @@
  * Example: teo_$(memao).png  |  $teo_$(memao).png  |  !teo_$(memao).png
  *
  * Features
- * - Uses a custom Sprite (not Sprite_Character) → vanilla 3×4 slicing can’t blur it.
+ * - Uses a custom Sprite (not Sprite_Character).
  * - Pixel-crisp scaling: forces NEAREST, disables mipmaps, rounds positions to whole pixels.
- * - Configurable offsets (default Y +8 px) to fix the “gap”.
+ * - Configurable offsets (default Y +8 px).
  * - Auto Idle/Walk/Run (run = player dashing).
  * - Plugin commands to play actions (axe/pickaxe/plant/water/pickup/reap) in facing dir.
  *
@@ -52,6 +52,7 @@
  * @type number
  * @default 8
  * @text Y Offset (px)
+ * @desc This is multiplied by ScalePercent at runtime ["(ScalePercent/100)*YOffset"]
  *
  * @param WalkFps
  * @type number
@@ -151,7 +152,7 @@
   const SCALE_PCT = Number(P.ScalePercent || 100);
   const CRISP = P.CrispPixels === "true";
   const XOFF = Number(P.XOffset || 0);
-  const YOFF = Number(P.YOffset || 0);
+  const YOFF = Number(P.YOffset || 0) * (SCALE_PCT / 100);
   const WALK_FPS = Number(P.WalkFps || 12);
   const DASH_FPS = Number(P.RunFps || 15);
   const IDLE_FPS = Number(P.IdleFps || 2)
