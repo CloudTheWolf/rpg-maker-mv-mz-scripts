@@ -53,19 +53,33 @@
  * @default 8
  * @text Y Offset (px)
  *
- * @param Fps
+ * @param WalkFps
  * @type number
  * @min 1
  * @max 60
- * @default 12
- * @text FPS (Idle/Walk)
+ * @default 7
+ * @text FPS (Walking)
+ * 
+ * @param IdleFps
+ * @type number
+ * @min 1
+ * @max 60
+ * @default 3
+ * @text FPS (Idle)
  *
+ * @param RunFps
+ * @type number
+ * @min 1
+ * @max 60
+ * @default 9
+ * @text FPS (Running/Dash)
+ * 
  * @param ActionFps
  * @type number
  * @min 1
  * @max 60
- * @default 15
- * @text FPS (Run/Actions)
+ * @default 8
+ * @text FPS (Actions)
  *
  * @param RowMapOverride
  * @type note
@@ -138,7 +152,9 @@
   const CRISP = P.CrispPixels === "true";
   const XOFF = Number(P.XOffset || 0);
   const YOFF = Number(P.YOffset || 0);
-  const FPS = Number(P.Fps || 12);
+  const WALK_FPS = Number(P.WalkFps || 12);
+  const DASH_FPS = Number(P.RunFps || 15);
+  const IDLE_FPS = Number(P.IdleFps || 2)
   const ACTION_FPS = Number(P.ActionFps || 15);
 
   
@@ -285,7 +301,6 @@
 
     // If nothing matched above, fall back to idle in current direction
     if (!out.length) return pickIdleRange(d);
-    console.log(out);
     return out;
   }
 
@@ -361,7 +376,7 @@
 
     // animation state
     this._mTimer = 0;
-    this._mFps = FPS;
+    this._mFps = IDLE_FPS;
     this._mFrameIndex = 0;
     this._mRanges = [];
     this._mRangesKey = "";
@@ -408,7 +423,7 @@
     const st = memaoState(ch);
 
     let ranges = [];
-    let fps = FPS;
+    let fps = IDLE_FPS;
     let key = "";
 
     if (st.mode === "manual") {
@@ -418,19 +433,19 @@
       key = `act:${st.action}:${manualDir}`;
     } else if (!movingSmooth) {
       ranges = pickIdleRange(dir);                 // 4 frames
-      fps = FPS;
+      fps = IDLE_FPS;
       key = `idle:${dir}`;
     } else if (dashing) {
       ranges = pickRunRange(dir);                  // 6 frames
-      fps = ACTION_FPS;
+      fps = DASH_FPS;
       key = `run:${dir}`;
     } else {
       ranges = pickWalkRange(dir);                 // 6 frames
-      fps = FPS;
+      fps = WALK_FPS;
       key = `walk:${dir}`;
     }
 
-    if (!ranges || ranges.length === 0) { ranges = [RANGE.idleDown]; key = "idle:2"; fps = FPS; }
+    if (!ranges || ranges.length === 0) { ranges = [RANGE.idleDown]; key = "idle:2"; fps = IDLE_FPS; }
 
     // reset ONLY when the state or speed truly changes
     if (this._mKey !== key || this._mFps !== fps) {
@@ -550,7 +565,7 @@
 
     
     if (window?.console) {
-      console.debug(`[Memao] PlayAction wait=${args.Wait} loop=${st.loop} action=${action} dir=${dir}`);
+      //console.debug(`[Memao] PlayAction wait=${args.Wait} loop=${st.loop} action=${action} dir=${dir}`);
     }
   });
 
@@ -562,3 +577,10 @@
   });
 
 })();
+
+// Expose to other Plugins
+
+function Sprite_Memao(){ this.initialize(...arguments); }
+Sprite_Memao.prototype = Object.create(Sprite.prototype);
+Sprite_Memao.prototype.constructor = Sprite_Memao;
+window.Sprite_Memao = Sprite_Memao;
