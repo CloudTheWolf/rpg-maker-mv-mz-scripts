@@ -99,19 +99,21 @@
  * @type number
  * @min 1
  * @default 1
- * @text Event Id (if Target=eventId)
+ * @text Event Id
  * @arg Action
  * @type select
+ * @option axe_chop
+ * @option axe_strike
+ * @option hoe 
  * @option idle
- * @option walk
- * @option run
- * @option pickup
  * @option pickaxe
- * @option axe
+ * @option pickup
  * @option plant
- * @option water
  * @option reap
- * @default axe
+ * @option run
+ * @option walk
+ * @option water
+ * @default axe_chop
  * @arg Direction
  * @type select
  * @option current
@@ -210,12 +212,12 @@
         { name: "pickaxeRight", start: 5, end: 8 }
       ]},
       { r: 13, entries: [
-        { name: "axeDown", start: 1, end: 4 },
-        { name: "axeUp",  start: 5, end: 8 }
+        { name: "axe_chopDown", start: 1, end: 4 },
+        { name: "axe_chopUp",  start: 5, end: 8 }
       ]},
       { r: 14, entries: [
-        { name: "axeLeft", start: 1, end: 4 },
-        { name: "axeRight",   start: 5, end: 8 }
+        { name: "axe_chopLeft", start: 1, end: 4 },
+        { name: "axe_chopRight",   start: 5, end: 8 }
       ]},
       { r: 15, entries: [
         { name: "plantDown",   start: 1, end: 3 },
@@ -242,6 +244,22 @@
       { r: 20, entries: [
         { name: "reapRight", start: 1, end: 4 },
         { name: "unused",    start: 5, end: 8 }
+      ]},
+      { r: 21, entries: [
+        { name: "hoeDown", start: 1, end: 4 },
+        { name: "hoeUp",    start: 5, end: 8 }
+      ]},
+      { r: 22, entries: [
+        { name: "hoeLeft", start: 1, end: 4 },
+        { name: "hoeRight",    start: 5, end: 8 }
+      ]},
+      { r: 23, entries: [
+        { name: "axe_strikeDown", start: 1, end: 4 },
+        { name: "axe_strikeUp",    start: 5, end: 8 }
+      ]},
+      { r: 24, entries: [
+        { name: "axe_strikeLeft", start: 1, end: 4 },
+        { name: "axe_strikeRight",    start: 5, end: 8 }
       ]}
     ]
   };
@@ -286,10 +304,10 @@
     const R = (n) => RANGE[n] || null;
     const out = [];    
     // Split actions that span two blocks
-    if (base === "pickaxe") {
-      if (D === "Up")  { if (R("pickaxeUp_a"))  out.push(R("pickaxeUp_a"));  if (R("pickaxeUp_b"))  out.push(R("pickaxeUp_b")); }
-      if (D === "Left"){ if (R("pickaxeLeft_a"))out.push(R("pickaxeLeft_a"));if (R("pickaxeLeft_b"))out.push(R("pickaxeLeft_b")); }
-    }
+    // if (base === "pickaxe") {
+    //   if (D === "Up")  { if (R("pickaxeUp_a"))  out.push(R("pickaxeUp_a"));  if (R("pickaxeUp_b"))  out.push(R("pickaxeUp_b")); }
+    //   if (D === "Left"){ if (R("pickaxeLeft_a"))out.push(R("pickaxeLeft_a"));if (R("pickaxeLeft_b"))out.push(R("pickaxeLeft_b")); }
+    // }
     if (base === "plant") {
       if (D === "Left"){ if (R("plantLeft_a")) out.push(R("plantLeft_a")); if (R("plantLeft_b")) out.push(R("plantLeft_b")); }
     }
@@ -539,10 +557,12 @@
       idle:"idle", walk:"walk", run:"run",
       pickup:"pickup","pick up":"pickup","pick-up":"pickup",pick:"pickup",
       pickaxe:"pickaxe","pick axe":"pickaxe",mining:"pickaxe",
-      axe:"axe",chop:"axe",chopping:"axe",
+      axe_chop:"axe_chop",chop:"axe_chop",chopping:"axe_chop",
       plant:"plant",sow:"plant",seed:"plant",
       water:"water",watering:"water",
-      reap:"reap",scythe:"reap"
+      reap:"reap",scythe:"reap",
+      axe_strike:"axe_strike",hoe:"hoe"
+
     };
     const action = ACTIONS[raw] || "idle";
 
@@ -576,6 +596,47 @@
     const ch = resolveTarget(String(args.Target||"player"), Number(args.EventId||0)); if (!ch) return;
     const st = memaoState(ch); st.mode="auto"; st.done=true; ch._memaoLocked=false;
   });
+
+  Game_Event.updateShadowChanges
+  
+  /**
+   * Compatability Patch for VisuStella
+   */
+  if (typeof Sprite_Memao === "function" && !Sprite_Memao.prototype.checkCharacter) {
+    Sprite_Memao.prototype.checkCharacter = function(character) {
+      return this._character === character;
+    };
+  }
+
+  const _findTargetSprite = Spriteset_Map.prototype.findTargetSprite;
+  Spriteset_Map.prototype.findTargetSprite = function(character) {
+    const sprites = this._characterSprites || [];
+    for (const spr of sprites) {
+      if (!spr) continue;
+      if (typeof spr.checkCharacter === "function") {
+        if (spr.checkCharacter(character)) return spr;
+      } else if (spr._character === character) {
+        return spr;
+      }
+    }
+    try { return _findTargetSprite.call(this, character); } catch { return null; }
+  };
+
+  // Game_Event.prototype.updateShadowChanges = function() {};
+
+  const _updateShadowChanges = Game_Event.prototype.updateShadowChanges;
+  if (_updateShadowChanges) {
+    Game_Event.prototype.updateShadowChanges = function() {
+      try {
+        return _updateShadowChanges.apply(this, arguments);
+      } catch (e) {
+        if (e && /checkCharacter is not a function/.test(String(e))) {
+          return;
+        }
+        throw e;
+      }
+    };
+  }
 
 })();
 
