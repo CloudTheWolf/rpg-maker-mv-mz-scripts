@@ -33,7 +33,7 @@
  *
  * @param Axe
  * @type struct<ActionSE>
- * @default {"Enabled":"true","SE":"{\"Name\":\"\",\"Volume\":\"75\",\"Pitch\":\"100\",\"Pan\":\"0\"}","Frames":"2","OnlyManual":"true"}
+ * @default {"Enabled":"true","SE":"{\"Name\":\"\",\"Volume\":\"75\",\"Pitch\":\"100\",\"Pan\":\"0\"}","Frames":"23,"OnlyManual":"true"}
  *
  * @param Plant
  * @type struct<ActionSE>
@@ -116,15 +116,16 @@
   }
 
   const CONFIG = {
-    idle:    parseAction("Idle"),
-    walk:    parseAction("Walk"),
-    run:     parseAction("Run"),
-    pickup:  parseAction("Pickup"),
-    pickaxe: parseAction("Pickaxe"),
-    axe:     parseAction("Axe"),
-    plant:   parseAction("Plant"),
-    water:   parseAction("Water"),
-    reap:    parseAction("Reap")
+    idle:           parseAction("Idle"),
+    walk:           parseAction("Walk"),
+    run:            parseAction("Run"),
+    pickup:         parseAction("Pickup"),
+    pickaxe:        parseAction("Pickaxe"),
+    axe_chop:       parseAction("Axe"),
+    axe_strike:     parseAction("Axe"),
+    plant:          parseAction("Plant"),
+    water:          parseAction("Water"),
+    reap:           parseAction("Reap")
   };
 
   // ---------- helpers ----------
