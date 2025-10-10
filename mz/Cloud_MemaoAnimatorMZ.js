@@ -407,11 +407,28 @@
     this._mSeq = [];
   };
 
-  function memaoBuildSeq(ranges, pingpong) {
+  function memaoBuildSeq(ranges, pingpong,isIdle) {
     const seq = [];
     for (const seg of (ranges || [])) {
       for (const c of seg.frames) seq.push({ row: seg.row, col: c });
     }
+    
+    // ---- Idle smoothing / subtle breathing ----
+    if (isIdle && seq.length) {
+      const extended = [];
+
+      for (let i = 0; i < seq.length; i++) {
+        const f = seq[i];
+        if (i === 0) {
+          extended.push(f, f, f, f);
+        } else {
+          extended.push(f);
+        }
+      }
+
+      return extended;
+    }
+
     if (!pingpong || seq.length < 2) return seq;
 
     const back = seq.slice(0, -1).reverse();
@@ -464,7 +481,7 @@
       key = `walk:${dir}`;
     }
 
-    if (!ranges || ranges.length === 0) { ranges = [RANGE.idleDown]; key = "idle:2"; fps = IDLE_FPS; }
+    if (!ranges || ranges.length === 0) { ranges = [RANGE.idleDown]; key = "idle:1"; fps = IDLE_FPS; }
 
     // reset ONLY when the state or speed truly changes
     if (this._mKey !== key || this._mFps !== fps) {
@@ -472,7 +489,8 @@
       this._mFps = fps;
       this._mRanges = ranges;
       const _memaoPingPong = (st.mode === "manual" && st.action === "water");
-      this._mSeq = memaoBuildSeq(ranges, _memaoPingPong);
+      const _memaoIdle = (st.mode !== "manual" && key.startsWith("idle:")) || (st.mode === "manual" && st.action === "idle");
+      this._mSeq = memaoBuildSeq(ranges, _memaoPingPong,_memaoIdle);
       this._mFrameIndex = 0;
       this._mTimer = 0;
       this._memaoDrawCurrent();
@@ -492,6 +510,19 @@
       }
       this._memaoDrawCurrent();
     }
+
+    this._memaoScanTicker = (this._memaoScanTicker||0) + 1;
+    if (this._memaoScanTicker >= 20){
+      this._memaoScanTicker = 0;
+      const list = this._characterSprites || [];
+      for (let i=0;i<list.length;i++){
+        const spr = list[i]; const ch = spr && spr._character; if (!ch) continue;
+        const want = wantsMemao(ch); const has = spr instanceof Sprite_Memao;
+        if (want && !has) replaceSprite(list, i, new Sprite_Memao(ch));
+        else if (!want && has) replaceSprite(list, i, new Sprite_Character(ch));
+      }
+    }
+
   };
 
   Sprite_Memao.prototype._memaoDrawCurrent = function(){
@@ -521,74 +552,58 @@
     this._memaoScanTicker = 0;
   };
 
-  const _Spriteset_Map_update = Spriteset_Map.prototype.update;
-  Spriteset_Map.prototype.update = function(){
-    _Spriteset_Map_update.call(this);
-    this._memaoScanTicker = (this._memaoScanTicker||0) + 1;
-    if (this._memaoScanTicker >= 20){
-      this._memaoScanTicker = 0;
-      const list = this._characterSprites || [];
-      for (let i=0;i<list.length;i++){
-        const spr = list[i]; const ch = spr && spr._character; if (!ch) continue;
-        const want = wantsMemao(ch); const has = spr instanceof Sprite_Memao;
-        if (want && !has) replaceSprite(list, i, new Sprite_Memao(ch));
-        else if (!want && has) replaceSprite(list, i, new Sprite_Character(ch));
-      }
-    }
-  };
-
   function resolveTarget(which, id){ if (which==="player") return $gamePlayer; if (which==="thisEvent"){ const e=$gameMap._interpreter?.eventId?.()||0; return e?$gameMap.event(e):null; } if (which==="eventId"){ const n=Number(id||0); return n?$gameMap.event(n):null; } return null; }
   
-    PluginManager.registerCommand(PLUGIN, "PlayAction", function(args) {
-    const target = String(args.Target || "player");
-    const eventId = Number(args.EventId || 0);
-    const ch = resolveTarget(target, eventId);
-    if (!ch) return;
+  PluginManager.registerCommand(PLUGIN, "PlayAction", function(args) {
+  const target = String(args.Target || "player");
+  const eventId = Number(args.EventId || 0);
+  const ch = resolveTarget(target, eventId);
+  if (!ch) return;
 
-    const d = String(args.Direction || "current").trim().toLowerCase();
-    let dir = ch.direction();
-    if (d === "up") dir = 8;
-    else if (d === "down") dir = 2;
-    else if (d === "left") dir = 4;
-    else if (d === "right") dir = 6;
+  const d = String(args.Direction || "current").trim().toLowerCase();
+  let dir = ch.direction();
+  if (d === "up") dir = 8;
+  else if (d === "down") dir = 2;
+  else if (d === "left") dir = 4;
+  else if (d === "right") dir = 6;
 
-    const raw = String(args.Action || "axe").trim().toLowerCase();
-    const ACTIONS = {
-      idle:"idle", walk:"walk", run:"run",
-      pickup:"pickup","pick up":"pickup","pick-up":"pickup",pick:"pickup",
-      pickaxe:"pickaxe","pick axe":"pickaxe",mining:"pickaxe",
-      axe_chop:"axe_chop",chop:"axe_chop",chopping:"axe_chop",
-      plant:"plant",sow:"plant",seed:"plant",
-      water:"water",watering:"water",
-      reap:"reap",scythe:"reap",
-      axe_strike:"axe_strike",hoe:"hoe"
+  const raw = String(args.Action || "axe").trim().toLowerCase();
+  const ACTIONS = {
+    idle:"idle", walk:"walk", run:"run",
+    pickup:"pickup","pick up":"pickup","pick-up":"pickup",pick:"pickup",
+    pickaxe:"pickaxe","pick axe":"pickaxe",mining:"pickaxe",
+    axe_chop:"axe_chop",chop:"axe_chop",chopping:"axe_chop",
+    plant:"plant",sow:"plant",seed:"plant",
+    water:"water",watering:"water",
+    reap:"reap",scythe:"reap",
+    axe_strike:"axe_strike",hoe:"hoe"
 
-    };
-    const action = ACTIONS[raw] || "idle";
+  };
+  const action = ACTIONS[raw] || "idle";
 
-    const st = memaoState(ch);
-    st.mode = "manual";
-    st.action = action;
-    st.dir = dir;
-    st.loop = (args.Loop === "true");
-    st.done = false;
-    // init cycle counter if missing
-    st._cycles = st._cycles || 0;
+  const st = memaoState(ch);
+  st.mode = "manual";
+  st.action = action;
+  st.dir = dir;
+  st.loop = (args.Loop === "true");
+  st.done = false;
+  // init cycle counter if missing
+  st._cycles = st._cycles || 0;
 
-    // lock movement during manual
-    ch._memaoLocked = true;
+  // lock movement during manual
+  ch._memaoLocked = true;
 
-    // If Wait=true, tell the interpreter to pause until ONE full loop completes.
-    if (String(args.Wait) === "true") {
-      this._memaoWait = { ch, start: st._cycles, cycles: 1 };
-      this.setWaitMode("memao");
-    }
+  // If Wait=true, tell the interpreter to pause until ONE full loop completes.
+  if (String(args.Wait) === "true") {
+    this._memaoWait = { ch, start: st._cycles, cycles: 1 };
+    this.setWaitMode("memao");
+  }
 
-    
-    if (window?.console) {
-      //console.debug(`[Memao] PlayAction wait=${args.Wait} loop=${st.loop} action=${action} dir=${dir}`);
-    }
-  });
+  
+  if (window?.console) {
+    //console.debug(`[Memao] PlayAction wait=${args.Wait} loop=${st.loop} action=${action} dir=${dir}`);
+  }
+});
 
 
 
