@@ -1,6 +1,6 @@
 /*:
  * @target MZ
- * @plugindesc Add support for Memao Sprite Sheet Creator sprites
+ * @plugindesc Ver 1.1 - Add support for Memao Sprite Sheet Creator sprites
  * @author CloudTheWolf
  * @url https://sleeping-robot-games.itch.io/sprite-sheet-creator
  * @help
@@ -141,6 +141,7 @@
  * @type number
  * @min 1
  * @default 1
+ * 
  */
 
 (() => {
@@ -435,6 +436,11 @@
     return seq.concat(back);
   }
 
+  function isCharacterDashing(ch) {
+    if (ch instanceof Game_Player) return ch.isDashing();
+    if (ch instanceof Game_Follower) return $gamePlayer.isDashing();
+    return false;
+  }
 
   Sprite_Memao.prototype.update = function(){
     Sprite.prototype.update.call(this);
@@ -454,7 +460,7 @@
     else if (this._mMoveHold > 0) this._mMoveHold--;
     const movingSmooth = movingNow || this._mMoveHold > 0;
 
-    const dashing = (ch instanceof Game_Player) ? ch.isDashing() : false;
+    const dashing = isCharacterDashing(ch);
     const dir = ch.direction();
     const st = memaoState(ch);
 
@@ -552,8 +558,190 @@
     this._memaoScanTicker = 0;
   };
 
-  function resolveTarget(which, id){ if (which==="player") return $gamePlayer; if (which==="thisEvent"){ const e=$gameMap._interpreter?.eventId?.()||0; return e?$gameMap.event(e):null; } if (which==="eventId"){ const n=Number(id||0); return n?$gameMap.event(n):null; } return null; }
+  function resolveTarget(which, id){
+    const n = Number(id || 0);
+
+    if (which === "player") {
+      // If no index or 1 → leader
+      if (n <= 1) return $gamePlayer;
+
+      // Followers: 2 → follower[0], 3 → follower[1], etc.
+      const idx = n - 2;
+      const followers = $gamePlayer.followers ? $gamePlayer.followers()._data : [];
+      return followers[idx] || null;
+    }
+
+    if (which === "thisEvent") {
+      const e = $gameMap._interpreter?.eventId?.() || 0;
+      return e ? $gameMap.event(e) : null;
+    }
+
+    if (which === "eventId") {
+      return n ? $gameMap.event(n) : null;
+    }
+
+    return null;
+  }
+
+    Game_Event.updateShadowChanges
   
+  /**
+   * Compatability Patch for VisuStella
+   */
+  if (typeof Sprite_Memao === "function" && !Sprite_Memao.prototype.checkCharacter) {
+    Sprite_Memao.prototype.checkCharacter = function(character) {
+      return this._character === character;
+    };
+  }
+
+  const _findTargetSprite = Spriteset_Map.prototype.findTargetSprite;
+  Spriteset_Map.prototype.findTargetSprite = function(character) {
+    const sprites = this._characterSprites || [];
+    for (const spr of sprites) {
+      if (!spr) continue;
+      if (typeof spr.checkCharacter === "function") {
+        if (spr.checkCharacter(character)) return spr;
+      } else if (spr._character === character) {
+        return spr;
+      }
+    }
+    try { return _findTargetSprite.call(this, character); } catch { return null; }
+  };
+
+  const _updateShadowChanges = Game_Event.prototype.updateShadowChanges;
+  if (_updateShadowChanges) {
+    Game_Event.prototype.updateShadowChanges = function() {
+      try {
+        return _updateShadowChanges.apply(this, arguments);
+      } catch (e) {
+        if (e && /checkCharacter is not a function/.test(String(e))) {
+          return;
+        }
+        throw e;
+      }
+    };
+  }
+
+  const _Memao_Game_Event_refresh = Game_Event.prototype.refresh;
+  Game_Event.prototype.refresh = function() {
+    _Memao_Game_Event_refresh.call(this);
+
+    const page = this.page();
+    const image = page ? page.image : null;
+    const name = image?.characterName || "";
+    const isMemao = name.toLowerCase().endsWith("_$(memao)");
+
+    // --- Normal event: do nothing ---
+    if (!isMemao) return;
+
+    // --- Handle Memao event logic ---
+    if (!page || !image.characterName) {
+      // empty page → hide sprite
+      this.setTransparent(true);
+      this._through = true;
+
+      // Find the sprite and visually hide it
+      const scene = SceneManager._scene;
+      if (scene && scene._spriteset) {
+        const spriteset = scene._spriteset;
+        for (const spr of spriteset._characterSprites || []) {
+          if (spr && spr._character === this && spr instanceof Sprite_Memao) {
+            spr.visible = false;
+          }
+        }
+      }
+      return;
+    }
+
+    this.setupPageSettings();
+    this.setTransparent(false);
+
+    const scene = SceneManager._scene;
+    if (scene && scene._spriteset) {
+      const spriteset = scene._spriteset;
+      const list = spriteset._characterSprites || [];
+
+      let hasSprite = false;
+      for (let i = 0; i < list.length; i++) {
+        const spr = list[i];
+        if (spr && spr._character === this) {
+          if (!(spr instanceof Sprite_Memao)) {
+            const memao = new Sprite_Memao(this);
+            const parent = spr.parent;
+            const index = parent.getChildIndex(spr);
+            parent.removeChildAt(index);
+            list[i] = memao;
+            parent.addChildAt(memao, index);
+          }
+          hasSprite = true;
+          break;
+        }
+      }
+
+      if (!hasSprite) {
+        const memao = new Sprite_Memao(this);
+        spriteset._characterSprites.push(memao);
+        spriteset._tilemap.addChild(memao);
+      }
+    }
+  };  
+
+
+  // ───────────────────────────────────────────────
+  // Scene_Map Functions
+  // ───────────────────────────────────────────────
+  const _Scene_Map_update = Scene_Map.prototype.update;
+  Scene_Map.prototype.update = function() {
+    _Scene_Map_update.call(this);
+
+    const ss = this._spriteset;
+    if (!ss || !ss._characterSprites) return;
+
+    for (let i = 0; i < ss._characterSprites.length; i++) {
+      const spr = ss._characterSprites[i];
+      const ch = spr?._character;
+      if (!ch) continue;
+
+      const name = ch.characterName ? ch.characterName() : "";
+      const isMemao = name.toLowerCase().endsWith("_$(memao)");
+
+      // Memao actor/event → ensure Sprite_Memao
+      if (isMemao && !(spr instanceof Sprite_Memao)) {
+        const memao = new Sprite_Memao(ch);
+        const parent = spr.parent;
+        if (parent) {
+          const index = parent.getChildIndex(spr);
+          parent.removeChildAt(index);
+          ss._characterSprites[i] = memao;
+          parent.addChildAt(memao, index);
+        }
+      }
+
+      // Non-Memao actor/event → ensure Sprite_Character
+      if (!isMemao && spr instanceof Sprite_Memao) {
+        const normal = new Sprite_Character(ch);
+        const parent = spr.parent;
+        if (parent) {
+          const index = parent.getChildIndex(spr);
+          parent.removeChildAt(index);
+          ss._characterSprites[i] = normal;
+          parent.addChildAt(normal, index);
+        }
+      }
+    }
+
+    
+    for (const ev of $gameMap.events()) {
+      if (ev && ev._memaoMoveTo && !ev._memaoMoveTo.done) memaoUpdateMove(ev);
+    }
+    const pl = $gamePlayer;
+    if (pl && pl._memaoMoveTo && !pl._memaoMoveTo.done) memaoUpdateMove(pl);
+
+  };
+
+  // ───────────────────────────────────────────────
+  // Plugin Command: Play Action
+  // ───────────────────────────────────────────────
   PluginManager.registerCommand(PLUGIN, "PlayAction", function(args) {
   const target = String(args.Target || "player");
   const eventId = Number(args.EventId || 0);
@@ -598,60 +786,16 @@
     this._memaoWait = { ch, start: st._cycles, cycles: 1 };
     this.setWaitMode("memao");
   }
-
   
-  if (window?.console) {
-    //console.debug(`[Memao] PlayAction wait=${args.Wait} loop=${st.loop} action=${action} dir=${dir}`);
-  }
-});
+  });
 
-
-
+  // ───────────────────────────────────────────────
+  // Plugin Command: Stop Action
+  // ───────────────────────────────────────────────  
   PluginManager.registerCommand(PLUGIN, "StopAction", args=>{
     const ch = resolveTarget(String(args.Target||"player"), Number(args.EventId||0)); if (!ch) return;
     const st = memaoState(ch); st.mode="auto"; st.done=true; ch._memaoLocked=false;
   });
-
-  Game_Event.updateShadowChanges
-  
-  /**
-   * Compatability Patch for VisuStella
-   */
-  if (typeof Sprite_Memao === "function" && !Sprite_Memao.prototype.checkCharacter) {
-    Sprite_Memao.prototype.checkCharacter = function(character) {
-      return this._character === character;
-    };
-  }
-
-  const _findTargetSprite = Spriteset_Map.prototype.findTargetSprite;
-  Spriteset_Map.prototype.findTargetSprite = function(character) {
-    const sprites = this._characterSprites || [];
-    for (const spr of sprites) {
-      if (!spr) continue;
-      if (typeof spr.checkCharacter === "function") {
-        if (spr.checkCharacter(character)) return spr;
-      } else if (spr._character === character) {
-        return spr;
-      }
-    }
-    try { return _findTargetSprite.call(this, character); } catch { return null; }
-  };
-
-  // Game_Event.prototype.updateShadowChanges = function() {};
-
-  const _updateShadowChanges = Game_Event.prototype.updateShadowChanges;
-  if (_updateShadowChanges) {
-    Game_Event.prototype.updateShadowChanges = function() {
-      try {
-        return _updateShadowChanges.apply(this, arguments);
-      } catch (e) {
-        if (e && /checkCharacter is not a function/.test(String(e))) {
-          return;
-        }
-        throw e;
-      }
-    };
-  }
 
 })();
 
