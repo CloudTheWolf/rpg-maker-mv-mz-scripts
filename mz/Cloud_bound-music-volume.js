@@ -17,7 +17,7 @@
  */
 
 (() => {
-    const pluginName = 'ctw-bound-music-volume';
+    const pluginName = 'Cloud_bound-music-volume';
     const parameters = PluginManager.parameters(pluginName);    
     const bgmLabel = parameters['bgmLabel'] || "BGM Volume";
 
