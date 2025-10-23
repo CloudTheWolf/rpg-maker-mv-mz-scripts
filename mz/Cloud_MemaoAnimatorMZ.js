@@ -1,6 +1,6 @@
 /*:
  * @target MZ
- * @plugindesc Ver 1.1 - Add support for Memao Sprite Sheet Creator sprites
+ * @plugindesc Ver 1.2 - Add support for Memao Sprite Sheet Creator sprites
  * @author CloudTheWolf
  * @url https://sleeping-robot-games.itch.io/sprite-sheet-creator
  * @help
@@ -357,8 +357,17 @@
   // Sprite_Memao: extends Sprite (no vanilla slicing) + crisp scaling + offsets
   // ──────────────────────────────────────────────────────────────────────────
   function Sprite_Memao(){ this.initialize(...arguments); }
-  Sprite_Memao.prototype = Object.create(Sprite.prototype);
+  
+  // Inherit from Sprite_Character so other systems detect it correctly
+  Sprite_Memao.prototype = Object.create(Sprite_Character.prototype);
   Sprite_Memao.prototype.constructor = Sprite_Memao;
+
+  // Keep a reference to the original update / balloon / animation logic for safety
+  const _Memao_SpriteChar_updateBalloon = Sprite_Character.prototype.updateBalloon;
+  const _Memao_SpriteChar_setupAnimation = Sprite_Character.prototype.setupAnimation;
+  const _Memao_SpriteChar_startBalloon = Sprite_Character.prototype.startBalloon;
+
+  
   const WALK_HOLD_FRAMES = 6;
 
   Sprite_Memao.prototype.initialize = function(character){
@@ -804,4 +813,26 @@
 function Sprite_Memao(){ this.initialize(...arguments); }
 Sprite_Memao.prototype = Object.create(Sprite.prototype);
 Sprite_Memao.prototype.constructor = Sprite_Memao;
+
+// ───────────────────────────────────────────────
+// ABS / HUD / Balloon Compatibility
+// ───────────────────────────────────────────────
+Sprite_Memao.prototype.updateBalloon = function() {
+  if (_Memao_SpriteChar_updateBalloon)
+    _Memao_SpriteChar_updateBalloon.call(this);
+};
+
+Sprite_Memao.prototype.setupAnimation = function() {
+  if (_Memao_SpriteChar_setupAnimation)
+    _Memao_SpriteChar_setupAnimation.call(this);
+};
+
+Sprite_Memao.prototype.startBalloon = function() {
+  if (_Memao_SpriteChar_startBalloon)
+    _Memao_SpriteChar_startBalloon.call(this);
+};
+
+Sprite_Memao.prototype.isMemao = true;
+
+// Export globally for addons
 window.Sprite_Memao = Sprite_Memao;
