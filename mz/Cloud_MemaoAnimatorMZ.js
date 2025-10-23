@@ -1,3 +1,7 @@
+//=============================================================================
+// CloudTheWolf - Memao Animator MZ
+//=============================================================================
+
 /*:
  * @target MZ
  * @plugindesc Ver 1.2 - Add support for Memao Sprite Sheet Creator sprites
