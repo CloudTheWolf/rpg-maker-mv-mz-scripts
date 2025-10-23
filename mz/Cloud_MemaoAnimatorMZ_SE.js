@@ -1,3 +1,7 @@
+//=============================================================================
+// CloudTheWolf - Memao Animator MZ - Animation Sound Effects
+//=============================================================================
+
 /*:
  * @target MZ
  * @plugindesc v1.0 Memao SE Addon — Play sound effects on specific frames for each animation type (Idle/Walk/Run/Pickup/Pickaxe/Axe/Plant/Water/Reap)
