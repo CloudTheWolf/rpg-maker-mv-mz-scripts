@@ -33,7 +33,7 @@
  */
 
 (() => {
-    const pluginName = 'ctw-toggle-settings';
+    const pluginName = 'Cloud_toggle-settings';
     const parameters = PluginManager.parameters(pluginName);
 
     const removeAlwaysDash = parameters.removeAlwaysDash === 'true';
