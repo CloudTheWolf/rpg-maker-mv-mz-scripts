@@ -1,3 +1,8 @@
+//=============================================================================
+// CloudTheWolf - Galv's Character Frames - Running Swap 
+// (If using Memao Sprites See Cloud_MemaoAmimatorMZ.js for better support)
+//=============================================================================
+
 /*:
  * @target MZ
  * @plugindesc [Addon] Auto-swap to running charset while player is dashing.
