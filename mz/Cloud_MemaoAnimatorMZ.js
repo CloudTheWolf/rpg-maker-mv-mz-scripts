@@ -1,10 +1,6 @@
-//=============================================================================
-// CloudTheWolf - Memao Animator MZ
-//=============================================================================
-
 /*:
  * @target MZ
- * @plugindesc Ver 1.2 - Add support for Memao Sprite Sheet Creator sprites
+ * @plugindesc Ver 1.3 - Add support for Memao Sprite Sheet Creator sprites
  * @author CloudTheWolf
  * @url https://sleeping-robot-games.itch.io/sprite-sheet-creator
  * @help
@@ -86,11 +82,17 @@
  * @default 8
  * @text FPS (Actions)
  *
+ * @param EnableIdle
+ * @type boolean
+ * @default true
+ * @text Enable Idle Animation
+ * @desc If false, idle breathing animation is disabled and only the first idle frame is shown.
+ *
  * @param RowMapOverride
  * @type note
  * @default 
  * @text Row Map Override (JSON)
- *
+ * 
  * @command PlayAction
  * @text Play Action
  * @arg Target
@@ -145,7 +147,15 @@
  * @type number
  * @min 1
  * @default 1
- * 
+ *
+ * @command SetIdleAnimation
+ * @text Set Idle Animation
+ *
+ * @arg Enabled
+ * @type boolean
+ * @default true
+ * @text Enable Idle Animation
+ *  
  */
 
 (() => {
@@ -164,6 +174,7 @@
   const DASH_FPS = Number(P.RunFps || 15);
   const IDLE_FPS = Number(P.IdleFps || 2)
   const ACTION_FPS = Number(P.ActionFps || 15);
+  let ENABLE_IDLE = P.EnableIdle === "true";
 
   
   const DEFAULT_ROW_MAP = {
@@ -307,25 +318,63 @@
     const D = dirName(d);
     const base = String(action || "").toLowerCase();
     const R = (n) => RANGE[n] || null;
-    const out = [];    
-    // Split actions that span two blocks
-    // if (base === "pickaxe") {
-    //   if (D === "Up")  { if (R("pickaxeUp_a"))  out.push(R("pickaxeUp_a"));  if (R("pickaxeUp_b"))  out.push(R("pickaxeUp_b")); }
-    //   if (D === "Left"){ if (R("pickaxeLeft_a"))out.push(R("pickaxeLeft_a"));if (R("pickaxeLeft_b"))out.push(R("pickaxeLeft_b")); }
-    // }
-    if (base === "plant") {
-      if (D === "Left"){ if (R("plantLeft_a")) out.push(R("plantLeft_a")); if (R("plantLeft_b")) out.push(R("plantLeft_b")); }
+    const out = [];
+
+    // Actions that span multiple blocks
+    const splitActions = ["plant", "walk", "run"];
+
+    if (splitActions.includes(base)) {
+      if (D === "Up") {
+        if (R(base + "Up_a")) out.push(R(base + "Up_a"));
+        if (R(base + "Up_b")) out.push(R(base + "Up_b"));
+      }
+
+      if (D === "Left") {
+        if (R(base + "Left_a")) out.push(R(base + "Left_a"));
+        if (R(base + "Left_b")) out.push(R(base + "Left_b"));
+      }
     }
 
-    // Single-block actions (most directions)
+    // Single-block actions
     if (!out.length) {
       const single = R(base + D);
       if (single) out.push(single);
     }
 
-    // If nothing matched above, fall back to idle in current direction
+    // Fallback
     if (!out.length) return pickIdleRange(d);
+
     return out;
+  }
+
+  function memaoIdlePauseEnabled(ch) {
+
+    // Default = true
+    let value = true;
+
+    // Actor note
+    if (ch instanceof Game_Player || ch instanceof Game_Follower) {
+      const actor = ch.actor ? ch.actor() : null;
+      const note = actor?.note || "";
+
+      const match = note.match(/<ctw:idlePause:(true|false)>/i);
+      if (match) {
+        value = match[1].toLowerCase() !== "false";
+      }
+    }
+
+    // Event note
+    else if (ch instanceof Game_Event) {
+      const ev = ch.event ? ch.event() : null;
+      const note = ev?.note || "";
+
+      const match = note.match(/<ctw:idlePause:(true|false)>/i);
+      if (match) {
+        value = match[1].toLowerCase() !== "false";
+      }
+    }
+
+    return value;
   }
 
   function memaoState(ch){ if(!ch._memaoState) ch._memaoState = { mode:"auto", loop:false, done:false }; return ch._memaoState; }
@@ -421,34 +470,64 @@
     this._mSeq = [];
   };
 
-  function memaoBuildSeq(ranges, pingpong,isIdle) {
-    const seq = [];
-    for (const seg of (ranges || [])) {
-      for (const c of seg.frames) seq.push({ row: seg.row, col: c });
-    }
-    
-    // ---- Idle smoothing / subtle breathing ----
-    if (isIdle && seq.length) {
-      const extended = [];
+  function memaoBuildSeq(ranges, pingpong, idleMode) {
 
-      for (let i = 0; i < seq.length; i++) {
-        const f = seq[i];
-        if (i === 0) {
-          extended.push(f, f, f, f);
-        } else {
-          extended.push(f);
-        }
+    const seq = [];
+
+    for (const seg of (ranges || [])) {
+      for (const c of seg.frames) {
+        seq.push({ row: seg.row, col: c });
+      }
+    }
+
+    // -----------------------------------------
+    // Idle Handling
+    // -----------------------------------------
+
+    if (seq.length && idleMode !== null) {
+
+      // Completely static idle
+      if (idleMode === "disabled") {
+        return [seq[0]];
       }
 
-      return extended;
+      // Continuous loop idle
+      if (idleMode === "loop") {
+        return seq;
+      }
+
+      // Breathing idle
+      if (idleMode === "pause") {
+
+        const extended = [];
+
+        for (let i = 0; i < seq.length; i++) {
+
+          const f = seq[i];
+
+          // Hold first frame longer
+          if (i === 0) {
+            extended.push(f, f, f, f);
+          } else {
+            extended.push(f);
+          }
+        }
+
+        return extended;
+      }
     }
 
-    if (!pingpong || seq.length < 2) return seq;
+    // -----------------------------------------
+    // Ping-pong animations
+    // -----------------------------------------
+
+    if (!pingpong || seq.length < 2) {
+      return seq;
+    }
 
     const back = seq.slice(0, -1).reverse();
     return seq.concat(back);
   }
-
   function isCharacterDashing(ch) {
     if (ch instanceof Game_Player) return ch.isDashing();
     if (ch instanceof Game_Follower) return $gamePlayer.isDashing();
@@ -489,7 +568,18 @@
     } else if (!movingSmooth) {
       ranges = pickIdleRange(dir);                 // 4 frames
       fps = IDLE_FPS;
-      key = `idle:${dir}`;
+      let idleKey = "pause";
+
+      if (!ENABLE_IDLE) {
+        idleKey = "disabled";
+      }
+      else if (!memaoIdlePauseEnabled(ch)) {
+        idleKey = "loop";
+      }
+
+      key = `idle:${dir}:${idleKey}`;
+
+      key = `idle:${dir}:${idleKey}`;
     } else if (dashing) {
       ranges = pickRunRange(dir);                  // 6 frames
       fps = DASH_FPS;
@@ -508,8 +598,30 @@
       this._mFps = fps;
       this._mRanges = ranges;
       const _memaoPingPong = (st.mode === "manual" && st.action === "water");
-      const _memaoIdle = (st.mode !== "manual" && key.startsWith("idle:")) || (st.mode === "manual" && st.action === "idle");
-      this._mSeq = memaoBuildSeq(ranges, _memaoPingPong,_memaoIdle);
+      const _memaoIdle =
+        (st.mode !== "manual" && key.startsWith("idle:")) ||
+        (st.mode === "manual" && st.action === "idle");
+
+      let idleMode = null;
+
+      if (_memaoIdle) {
+
+        if (!ENABLE_IDLE) {
+          idleMode = "disabled";
+        }
+        else if (!memaoIdlePauseEnabled(ch)) {
+          idleMode = "loop";
+        }
+        else {
+          idleMode = "pause";
+        }
+      }
+
+      this._mSeq = memaoBuildSeq(
+        ranges,
+        _memaoPingPong,
+        idleMode
+      );
       this._mFrameIndex = 0;
       this._mTimer = 0;
       this._memaoDrawCurrent();
@@ -755,61 +867,86 @@
   // ───────────────────────────────────────────────
   // Plugin Command: Play Action
   // ───────────────────────────────────────────────
-  PluginManager.registerCommand(PLUGIN, "PlayAction", function(args) {
-  const target = String(args.Target || "player");
-  const eventId = Number(args.EventId || 0);
-  const ch = resolveTarget(target, eventId);
-  if (!ch) return;
+    PluginManager.registerCommand(PLUGIN, "PlayAction", function(args) {
+      const target = String(args.Target || "player");
+      const eventId = Number(args.EventId || 0);
+      const ch = resolveTarget(target, eventId);
+      if (!ch) return;
 
-  const d = String(args.Direction || "current").trim().toLowerCase();
-  let dir = ch.direction();
-  if (d === "up") dir = 8;
-  else if (d === "down") dir = 2;
-  else if (d === "left") dir = 4;
-  else if (d === "right") dir = 6;
+      const d = String(args.Direction || "current").trim().toLowerCase();
+      let dir = ch.direction();
+      if (d === "up") dir = 8;
+      else if (d === "down") dir = 2;
+      else if (d === "left") dir = 4;
+      else if (d === "right") dir = 6;
 
-  const raw = String(args.Action || "axe").trim().toLowerCase();
-  const ACTIONS = {
-    idle:"idle", walk:"walk", run:"run",
-    pickup:"pickup","pick up":"pickup","pick-up":"pickup",pick:"pickup",
-    pickaxe:"pickaxe","pick axe":"pickaxe",mining:"pickaxe",
-    axe_chop:"axe_chop",chop:"axe_chop",chopping:"axe_chop",
-    plant:"plant",sow:"plant",seed:"plant",
-    water:"water",watering:"water",
-    reap:"reap",scythe:"reap",
-    axe_strike:"axe_strike",hoe:"hoe"
+      const raw = String(args.Action || "axe").trim().toLowerCase();
+      const ACTIONS = {
+        idle:"idle", walk:"walk", run:"run",
+        pickup:"pickup","pick up":"pickup","pick-up":"pickup",pick:"pickup",
+        pickaxe:"pickaxe","pick axe":"pickaxe",mining:"pickaxe",
+        axe_chop:"axe_chop",chop:"axe_chop",chopping:"axe_chop",
+        plant:"plant",sow:"plant",seed:"plant",
+        water:"water",watering:"water",
+        reap:"reap",scythe:"reap",
+        axe_strike:"axe_strike",hoe:"hoe"
 
-  };
-  const action = ACTIONS[raw] || "idle";
+      };
+      const action = ACTIONS[raw] || "idle";
 
-  const st = memaoState(ch);
-  st.mode = "manual";
-  st.action = action;
-  st.dir = dir;
-  st.loop = (args.Loop === "true");
-  st.done = false;
-  // init cycle counter if missing
-  st._cycles = st._cycles || 0;
+      const st = memaoState(ch);
+      st.mode = "manual";
+      st.action = action;
+      st.dir = dir;
+      st.loop = (args.Loop === "true");
+      st.done = false;
+      // init cycle counter if missing
+      st._cycles = st._cycles || 0;
 
-  // lock movement during manual
-  ch._memaoLocked = true;
+      // lock movement during manual
+      ch._memaoLocked = true;
 
-  // If Wait=true, tell the interpreter to pause until ONE full loop completes.
-  if (String(args.Wait) === "true") {
-    this._memaoWait = { ch, start: st._cycles, cycles: 1 };
-    this.setWaitMode("memao");
-  }
-  
+      // If Wait=true, tell the interpreter to pause until ONE full loop completes.
+      if (String(args.Wait) === "true") {
+        this._memaoWait = { ch, start: st._cycles, cycles: 1 };
+        this.setWaitMode("memao");
+      }
+    
   });
 
   // ───────────────────────────────────────────────
-  // Plugin Command: Stop Action
+  // Plugin Command: Stop Action 
   // ───────────────────────────────────────────────  
   PluginManager.registerCommand(PLUGIN, "StopAction", args=>{
     const ch = resolveTarget(String(args.Target||"player"), Number(args.EventId||0)); if (!ch) return;
     const st = memaoState(ch); st.mode="auto"; st.done=true; ch._memaoLocked=false;
   });
 
+  // ───────────────────────────────────────────────
+  // Plugin Command: Enable Idle
+  // ─────────────────────────────────────────────── 
+  PluginManager.registerCommand(PLUGIN, "SetIdleAnimation", args => {
+
+    const target = String(args.Target || "player");
+    const eventId = Number(args.EventId || 0);
+
+    const ch = resolveTarget(target, eventId);
+    if (!ch) return;
+
+    const st = memaoState(ch);
+
+    st._idleEnabled = String(args.Enabled) === "true";
+
+    // Force animation rebuild immediately
+    const scene = SceneManager._scene;
+    const sprites = scene?._spriteset?._characterSprites || [];
+
+    for (const spr of sprites) {
+      if (spr && spr._character === ch) {
+        spr._mKey = "";
+      }
+    }
+  });
 })();
 
 // Expose to other Plugins
