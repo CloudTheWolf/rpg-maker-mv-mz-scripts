@@ -1,6 +1,6 @@
 /*:
  * @target MZ
- * @plugindesc Ver 1.3 - Add support for Memao Sprite Sheet Creator sprites
+ * @plugindesc Ver 1.4 - Add support for Memao Sprite Sheet Creator sprites
  * @author CloudTheWolf
  * @url https://sleeping-robot-games.itch.io/sprite-sheet-creator
  * @help
@@ -13,7 +13,7 @@
  * - Pixel-crisp scaling: forces NEAREST, disables mipmaps, rounds positions to whole pixels.
  * - Configurable offsets (default Y +8 px).
  * - Auto Idle/Walk/Run (run = player dashing).
- * - Plugin commands to play actions (axe/pickaxe/plant/water/pickup/reap) in facing dir.
+ * - Plugin commands to play actions (axe/pickaxe/plant/water/pickup/reap/strike/hurt/downed/death) in facing dir.
  *
  * If your sheet layout differs, paste JSON into RowMapOverride (defaults to 8×20 map).
  *
@@ -106,6 +106,7 @@
  * @min 1
  * @default 1
  * @text Event Id
+ * 
  * @arg Action
  * @type select
  * @option axe_chop
@@ -119,7 +120,13 @@
  * @option run
  * @option walk
  * @option water
+ * @option slash
+ * @option hurt
+ * @option downed
+ * @option death
+ * @option revive
  * @default axe_chop
+ * 
  * @arg Direction
  * @type select
  * @option current
@@ -134,7 +141,13 @@
  * @arg Wait
  * @type boolean
  * @default false
- *
+ * 
+ * @arg HoldLastFrame
+ * @type boolean
+ * @default false
+ * @text Hold Last Frame
+ * @desc If true, a non-looping manual action stays on its final frame instead of returning to idle.
+ * 
  * @command StopAction
  * @text Stop Action
  * @arg Target
@@ -259,21 +272,47 @@
       ]},
       { r: 20, entries: [
         { name: "reapRight", start: 1, end: 4 },
-        { name: "unused",    start: 5, end: 8 }
+        { name: "slashDown",    start: 5, end: 8 }
       ]},
       { r: 21, entries: [
+        { name: "slashUp", start: 1, end: 4 },
+        { name: "slashLeft",    start: 5, end: 8 }
+      ]},
+      { r: 22, entries: [
+        { name: "slashRight", start: 1, end: 4 },
+        { name: "hurtDown",    start: 5, end: 6 },
+        { name: "hurtUp", start: 7, end: 8 }
+      ]},
+      { r: 23, entries: [
+        { name: "hurtLeft",    start: 1, end: 2 },
+        { name: "hurtRight", start: 3, end: 4 },
+        { name: "downedDown",    start: 5, end: 6 },
+        { name: "downedUp",    start: 7, end: 8 }
+      ]},
+      { r: 24, entries: [
+        { name: "downedLeft", start: 1, end: 2 },
+        { name: "downedRight",  start: 3, end: 4 },
+        { name: "deathDown",    start: 5, end: 7 },
+        { name: "deathUp_a",    start: 8, end: 8 }
+      ]},
+      { r: 25, entries: [
+        { name: "deathUp_b", start: 1, end: 2 },
+        { name: "deathLeft",    start: 3, end: 5 },
+        { name: "deathRight",    start: 6, end: 8 }
+      ]},
+      { r: 26, entries: [
         { name: "hoeDown", start: 1, end: 4 },
         { name: "hoeUp",    start: 5, end: 8 }
       ]},
-      { r: 22, entries: [
+      { r: 27, entries: [
         { name: "hoeLeft", start: 1, end: 4 },
         { name: "hoeRight",    start: 5, end: 8 }
       ]},
-      { r: 23, entries: [
+      { r: 28, entries: [
         { name: "axe_strikeDown", start: 1, end: 4 },
         { name: "axe_strikeUp",    start: 5, end: 8 }
       ]},
-      { r: 24, entries: [
+      { r: 29, entries: [
         { name: "axe_strikeLeft", start: 1, end: 4 },
         { name: "axe_strikeRight",    start: 5, end: 8 }
       ]}
@@ -316,12 +355,18 @@
   }
   function pickActionRange(action, d) {
     const D = dirName(d);
-    const base = String(action || "").toLowerCase();
+    let base = String(action || "").toLowerCase();
+
+    // Revive uses death frames, played in reverse later.
+    if (base === "revive") {
+      base = "death";
+    }
+
     const R = (n) => RANGE[n] || null;
     const out = [];
 
     // Actions that span multiple blocks
-    const splitActions = ["plant", "walk", "run"];
+    const splitActions = ["plant", "walk", "run","death"];
 
     if (splitActions.includes(base)) {
       if (D === "Up") {
@@ -377,7 +422,18 @@
     return value;
   }
 
-  function memaoState(ch){ if(!ch._memaoState) ch._memaoState = { mode:"auto", loop:false, done:false }; return ch._memaoState; }
+  function memaoState(ch){
+    if(!ch._memaoState) {
+      ch._memaoState = {
+        mode: "auto",
+        loop: false,
+        done: false,
+        holdLastFrame: false,
+        _cycles: 0
+      };
+    }
+    return ch._memaoState;
+  }
 
   // movement lock during manual action
   const _Game_CharacterBase_updateRoutineMove = Game_CharacterBase.prototype.updateRoutineMove;
@@ -396,8 +452,9 @@
 
       const currentCycles = st._cycles || 0;
       const cyclesDone = currentCycles >= (w.start + (w.cycles || 1));
-      const manualOver = st.mode !== "manual";
-      const stillWaiting = !(cyclesDone || manualOver);
+      const manualDone = !!st.done;
+      const manualOver = st.mode !== "manual" && !st.holdLastFrame;
+      const stillWaiting = !(cyclesDone || manualDone || manualOver);
 
       if (!stillWaiting) { this._waitMode = ""; this._memaoWait = null; }
       return stillWaiting;
@@ -470,7 +527,7 @@
     this._mSeq = [];
   };
 
-  function memaoBuildSeq(ranges, pingpong, idleMode) {
+  function memaoBuildSeq(ranges, pingpong, idleMode, reverse) {
 
     const seq = [];
 
@@ -517,6 +574,11 @@
       }
     }
 
+    // For Revive animation we'll use this to play the death animation backwards    
+    if (reverse) {
+      seq.reverse();
+    }
+
     // -----------------------------------------
     // Ping-pong animations
     // -----------------------------------------
@@ -528,6 +590,7 @@
     const back = seq.slice(0, -1).reverse();
     return seq.concat(back);
   }
+
   function isCharacterDashing(ch) {
     if (ch instanceof Game_Player) return ch.isDashing();
     if (ch instanceof Game_Follower) return $gamePlayer.isDashing();
@@ -617,10 +680,13 @@
         }
       }
 
+      const _memaoReverse = st.mode === "manual" && st.action === "revive";
+
       this._mSeq = memaoBuildSeq(
         ranges,
         _memaoPingPong,
-        idleMode
+        idleMode,
+        _memaoReverse
       );
       this._mFrameIndex = 0;
       this._mTimer = 0;
@@ -632,13 +698,33 @@
     this._mTimer += 1;
     if (this._mTimer >= framesPerTick && this._mSeq && this._mSeq.length) {
       this._mTimer = 0;
-      this._mFrameIndex = (this._mFrameIndex + 1) % this._mSeq.length;
+      if (st.mode === "manual") {
+        const lastIndex = this._mSeq.length - 1;
 
-      if (st.mode === "manual" && !st.loop && this._mFrameIndex === 0) {
-        st.done = true;
-        st.mode = "auto";
-        ch._memaoLocked = false;
+        if (this._mFrameIndex >= lastIndex) {
+          st._cycles = (st._cycles || 0) + 1;
+
+          if (!st.loop) {
+            st.done = true;
+
+            if (st.holdLastFrame) {
+              this._mFrameIndex = lastIndex;
+              ch._memaoLocked = false;
+            } else {
+              st.mode = "auto";
+              ch._memaoLocked = false;
+              this._mFrameIndex = 0;
+            }
+          } else {
+            this._mFrameIndex = 0;
+          }
+        } else {
+          this._mFrameIndex++;
+        }
+      } else {
+        this._mFrameIndex = (this._mFrameIndex + 1) % this._mSeq.length;
       }
+
       this._memaoDrawCurrent();
     }
 
@@ -889,16 +975,22 @@
         plant:"plant",sow:"plant",seed:"plant",
         water:"water",watering:"water",
         reap:"reap",scythe:"reap",
-        axe_strike:"axe_strike",hoe:"hoe"
+        axe_strike:"axe_strike",hoe:"hoe",
+        slash:"slash", hurt:"hurt", 
+        downed:"downed", death:"death",
+        revive:"revive"
 
       };
       const action = ACTIONS[raw] || "idle";
 
       const st = memaoState(ch);
+      const forceHoldLastFrame = action === "death"; // We'll always hold last frame on death
+
       st.mode = "manual";
       st.action = action;
       st.dir = dir;
-      st.loop = (args.Loop === "true");
+      st.loop = forceHoldLastFrame ? false : (args.Loop === "true");
+      st.holdLastFrame = forceHoldLastFrame || (args.HoldLastFrame === "true");
       st.done = false;
       // init cycle counter if missing
       st._cycles = st._cycles || 0;
@@ -918,8 +1010,24 @@
   // Plugin Command: Stop Action 
   // ───────────────────────────────────────────────  
   PluginManager.registerCommand(PLUGIN, "StopAction", args=>{
-    const ch = resolveTarget(String(args.Target||"player"), Number(args.EventId||0)); if (!ch) return;
-    const st = memaoState(ch); st.mode="auto"; st.done=true; ch._memaoLocked=false;
+    const ch = resolveTarget(String(args.Target||"player"), Number(args.EventId||0)); 
+    if (!ch) return;
+
+    const st = memaoState(ch);
+    st.mode = "auto";
+    st.done = true;
+    st.holdLastFrame = false;
+    ch._memaoLocked = false;
+
+    // Force animation rebuild immediately
+    const scene = SceneManager._scene;
+    const sprites = scene?._spriteset?._characterSprites || [];
+
+    for (const spr of sprites) {
+      if (spr && spr._character === ch) {
+        spr._mKey = "";
+      }
+    }
   });
 
   // ───────────────────────────────────────────────
