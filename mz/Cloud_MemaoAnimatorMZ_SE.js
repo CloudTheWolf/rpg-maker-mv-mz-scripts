@@ -1,10 +1,6 @@
-//=============================================================================
-// CloudTheWolf - Memao Animator MZ - Animation Sound Effects
-//=============================================================================
-
 /*:
  * @target MZ
- * @plugindesc v1.0 Memao SE Addon — Play sound effects on specific frames for each animation type (Idle/Walk/Run/Pickup/Pickaxe/Axe/Plant/Water/Reap)
+ * @plugindesc v1.1 Memao SE Addon — Play sound effects on specific frames for each animation type (Idle/Walk/Run/Pickup/Pickaxe/Axe/Plant/Water/Reap)
  * @author CloudTheWolf
  *
  * @help
@@ -48,6 +44,26 @@
  * @default {"Enabled":"false","SE":"{\"Name\":\"\",\"Volume\":\"75\",\"Pitch\":\"100\",\"Pan\":\"0\"}","Frames":"2","OnlyManual":"true"}
  *
  * @param Reap
+ * @type struct<ActionSE>
+ * @default {"Enabled":"false","SE":"{\"Name\":\"\",\"Volume\":\"75\",\"Pitch\":\"100\",\"Pan\":\"0\"}","Frames":"2","OnlyManual":"true"}
+ * 
+ * @param Slash
+ * @type struct<ActionSE>
+ * @default {"Enabled":"false","SE":"{\"Name\":\"\",\"Volume\":\"75\",\"Pitch\":\"100\",\"Pan\":\"0\"}","Frames":"2","OnlyManual":"true"}
+ * 
+ * @param Hurt
+ * @type struct<ActionSE>
+ * @default {"Enabled":"false","SE":"{\"Name\":\"\",\"Volume\":\"75\",\"Pitch\":\"100\",\"Pan\":\"0\"}","Frames":"2","OnlyManual":"true"}
+ * 
+ * @param Downed
+ * @type struct<ActionSE>
+ * @default {"Enabled":"false","SE":"{\"Name\":\"\",\"Volume\":\"75\",\"Pitch\":\"100\",\"Pan\":\"0\"}","Frames":"2","OnlyManual":"true"}
+ * 
+ * @param Death
+ * @type struct<ActionSE>
+ * @default {"Enabled":"false","SE":"{\"Name\":\"\",\"Volume\":\"75\",\"Pitch\":\"100\",\"Pan\":\"0\"}","Frames":"2","OnlyManual":"true"}
+ * 
+ * @param Revive
  * @type struct<ActionSE>
  * @default {"Enabled":"false","SE":"{\"Name\":\"\",\"Volume\":\"75\",\"Pitch\":\"100\",\"Pan\":\"0\"}","Frames":"2","OnlyManual":"true"}
  */
@@ -129,7 +145,12 @@
     axe_strike:     parseAction("Axe"),
     plant:          parseAction("Plant"),
     water:          parseAction("Water"),
-    reap:           parseAction("Reap")
+    reap:           parseAction("Reap"),
+    slash:           parseAction("Slash"),
+    hurt:           parseAction("Hurt"),
+    downed:           parseAction("Downed"),
+    death:           parseAction("Death"),
+    revive:           parseAction("Revive")
   };
 
   // ---------- helpers ----------
