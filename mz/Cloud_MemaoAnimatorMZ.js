@@ -1,6 +1,6 @@
 /*:
  * @target MZ
- * @plugindesc Ver 1.5 - Add support for Memao Sprite Sheet Creator sprites
+ * @plugindesc Ver 1.6 - Add support for Memao Sprite Sheet Creator sprites
  * @author CloudTheWolf
  * @url https://sleeping-robot-games.itch.io/sprite-sheet-creator
  * @help
@@ -13,6 +13,7 @@
  * - Pixel-crisp scaling: forces NEAREST, disables mipmaps, rounds positions to whole pixels.
  * - Configurable offsets (default Y +8 px).
  * - Auto Idle/Walk/Run (run = player dashing).
+ * - Eat, drink, laugh, wave, think, shrug, sit, read and paint (left/right only).
  * - Downed loops at 0.25x action speed until stopped or replaced.
  * - Plugin commands to play actions (axe/pickaxe/plant/water/pickup/reap/strike/hurt/downed/death) in facing dir.
  * - Debug Command to test animations in-engine
@@ -24,11 +25,14 @@
  * Moving the menu cursor changes the animation on every assigned event together.
  * Speed supports 0.25x to 4x; 1x uses configured idle/walk/run/action FPS.
  * Playback switches between Loop and Once (hold final frame).
+ * Wave/Laugh/Drink can repeat their last two frames 0-99 extra times.
+ * With repetition enabled, Drink finishes by playing the full animation in reverse.
+ * Loop repeats the complete extended sequence; Wait waits for that full sequence.
  * Use Left/Right or OK on controls. OK on an animation replays it.
  * Cancel / Stop closes the menu and restores automatic animation and movement.
  * Includes revive (death in reverse), and respects RowMapOverride.
  *
- * If your sheet layout differs, paste JSON into RowMapOverride (defaults to 8×20 map).
+ * If your sheet layout differs, paste JSON into RowMapOverride (defaults to the 8×45 sheet layout).
  *
  * @param CellWidth
  * @type number
@@ -138,6 +142,15 @@
  * @option downed
  * @option death
  * @option revive
+ * @option eat
+ * @option drink
+ * @option laugh
+ * @option wave
+ * @option think
+ * @option shrug
+ * @option sit
+ * @option read
+ * @option paint
  * @default axe_chop
  * 
  * @arg Direction
@@ -148,6 +161,20 @@
  * @option right
  * @option up
  * @default current
+ * @arg RepeatLastTwo
+ * @text Repeat Last 2 Frames
+ * @type boolean
+ * @default false
+ * @desc Wave/Laugh/Drink: repeat the final two frames, then Drink plays fully in reverse.
+ *
+ * @arg RepeatCount
+ * @text Extra Repeat Count
+ * @type number
+ * @min 0
+ * @max 99
+ * @default 3
+ * @desc Additional two-frame cycles after the initial animation (0-99). Requires Repeat Last 2 Frames.
+ *
  * @arg Loop
  * @type boolean
  * @default false
@@ -353,20 +380,89 @@
         { name: "deathRight",    start: 6, end: 8 }
       ]},
       { r: 26, entries: [
-        { name: "hoeDown", start: 1, end: 4 },
-        { name: "hoeUp",    start: 5, end: 8 }
+        {"name": "eatDown", "start": 1, "end": 3},
+        {"name": "eatUp", "start": 4, "end": 6},
+        {"name": "eatLeft_a", "start": 7, "end": 8}
       ]},
       { r: 27, entries: [
-        { name: "hoeLeft", start: 1, end: 4 },
-        { name: "hoeRight",    start: 5, end: 8 }
+        {"name": "eatLeft_b", "start": 1, "end": 1},
+        {"name": "eatRight", "start": 2, "end": 4},
+        {"name": "drinkDown", "start": 5, "end": 7},
+        {"name": "drinkUp_a", "start": 8, "end": 8}
       ]},
       { r: 28, entries: [
-        { name: "axe_strikeDown", start: 1, end: 4 },
-        { name: "axe_strikeUp",    start: 5, end: 8 }
+        {"name": "drinkUp_b", "start": 1, "end": 2},
+        {"name": "drinkLeft", "start": 3, "end": 5},
+        {"name": "drinkRight", "start": 6, "end": 8}
       ]},
       { r: 29, entries: [
-        { name: "axe_strikeLeft", start: 1, end: 4 },
-        { name: "axe_strikeRight",    start: 5, end: 8 }
+        {"name": "waveDown", "start": 1, "end": 4},
+        {"name": "waveUp", "start": 5, "end": 8}
+      ]},
+      { r: 30, entries: [
+        {"name": "waveLeft", "start": 1, "end": 4},
+        {"name": "waveRight", "start": 5, "end": 8}
+      ]},
+      { r: 31, entries: [
+        {"name": "laughDown", "start": 1, "end": 3},
+        {"name": "laughUp", "start": 4, "end": 6},
+        {"name": "laughLeft_a", "start": 7, "end": 8}
+      ]},
+      { r: 32, entries: [
+        {"name": "laughLeft_b", "start": 1, "end": 1},
+        {"name": "laughRight", "start": 2, "end": 4},
+        {"name": "shrugDown", "start": 5, "end": 8}
+      ]},
+      { r: 33, entries: [
+        {"name": "shrugUp", "start": 1, "end": 4},
+        {"name": "shrugLeft", "start": 5, "end": 8}
+      ]},
+      { r: 34, entries: [
+        {"name": "shrugRight", "start": 1, "end": 4},
+        {"name": "thinkDown", "start": 5, "end": 8}
+      ]},
+      { r: 35, entries: [
+        {"name": "thinkUp", "start": 1, "end": 4},
+        {"name": "thinkLeft", "start": 5, "end": 8}
+      ]},
+      { r: 36, entries: [
+        {"name": "thinkRight", "start": 1, "end": 4},
+        {"name": "sitDown", "start": 5, "end": 8}
+      ]},
+      { r: 37, entries: [
+        {"name": "sitUp", "start": 1, "end": 4},
+        {"name": "sitLeft", "start": 5, "end": 8}
+      ]},
+      { r: 38, entries: [
+        {"name": "sitRight", "start": 1, "end": 4},
+        {"name": "readDown", "start": 5, "end": 8}
+      ]},
+      { r: 39, entries: [
+        {"name": "readUp", "start": 1, "end": 4},
+        {"name": "readLeft", "start": 5, "end": 8}
+      ]},
+      { r: 40, entries: [
+        {"name": "readRight", "start": 1, "end": 4},
+        {"name": "paintLeft", "start": 5, "end": 8}
+      ]},
+      { r: 41, entries: [
+        {"name": "paintRight", "start": 1, "end": 4}
+      ]},
+      { r: 42, entries: [
+        {"name": "hoeDown", "start": 1, "end": 4},
+        {"name": "hoeUp", "start": 5, "end": 8}
+      ]},
+      { r: 43, entries: [
+        {"name": "hoeLeft", "start": 1, "end": 4},
+        {"name": "hoeRight", "start": 5, "end": 8}
+      ]},
+      { r: 44, entries: [
+        {"name": "axe_strikeDown", "start": 1, "end": 4},
+        {"name": "axe_strikeUp", "start": 5, "end": 8}
+      ]},
+      { r: 45, entries: [
+        {"name": "axe_strikeLeft", "start": 1, "end": 4},
+        {"name": "axe_strikeRight", "start": 5, "end": 8}
       ]}
     ]
   };
@@ -417,25 +513,12 @@
     const R = (n) => RANGE[n] || null;
     const out = [];
 
-    // Actions that span multiple blocks
-    const splitActions = ["plant", "walk", "run","death"];
-
-    if (splitActions.includes(base)) {
-      if (D === "Up") {
-        if (R(base + "Up_a")) out.push(R(base + "Up_a"));
-        if (R(base + "Up_b")) out.push(R(base + "Up_b"));
-      }
-
-      if (D === "Left") {
-        if (R(base + "Left_a")) out.push(R(base + "Left_a"));
-        if (R(base + "Left_b")) out.push(R(base + "Left_b"));
-      }
-    }
-
-    // Single-block actions
-    if (!out.length) {
-      const single = R(base + D);
-      if (single) out.push(single);
+    // Any direction can span rows in the packed sheet.
+    if (R(base + D + "_a")) {
+      out.push(R(base + D + "_a"));
+      if (R(base + D + "_b")) out.push(R(base + D + "_b"));
+    } else if (R(base + D)) {
+      out.push(R(base + D));
     }
 
     // Fallback
@@ -643,6 +726,20 @@
     return seq.concat(back);
   }
 
+  function repeatCount(value) {
+    const count = Number(value ?? 3);
+    return Number.isFinite(count) ? Math.max(0, Math.min(99, Math.floor(count))) : 3;
+  }
+
+  function memaoRepeatEnding(seq, action, enabled, count) {
+    if (!enabled || !["wave", "laugh", "drink"].includes(action) || seq.length < 2) return seq;
+    const out = seq.slice();
+    const ending = seq.slice(-2);
+    for (let i = 0; i < repeatCount(count); i++) out.push(...ending);
+    if (action === "drink") out.push(...seq.slice().reverse());
+    return out;
+  }
+
   function isCharacterDashing(ch) {
     if (ch instanceof Game_Player) return ch.isDashing();
     if (ch instanceof Game_Follower) return $gamePlayer.isDashing();
@@ -679,7 +776,7 @@
       const manualDir = st.dir || dir;
       ranges = pickActionRange(st.action, manualDir);
       fps = st.debugFps ?? (ACTION_FPS * (st.action === "downed" ? 0.25 : 1));
-      key = `act:${st.action}:${manualDir}`;
+      key = `act:${st.action}:${manualDir}:${st._revision || 0}:${!!st.repeatLastTwo}:${st.repeatCount || 0}`;
     } else if (!movingSmooth) {
       ranges = pickIdleRange(dir);                 // 4 frames
       fps = IDLE_FPS;
@@ -740,6 +837,9 @@
         idleMode,
         _memaoReverse
       );
+      if (st.mode === "manual") {
+        this._mSeq = memaoRepeatEnding(this._mSeq, st.action, st.repeatLastTwo, st.repeatCount);
+      }
       this._mFrameIndex = 0;
       this._mTimer = 0;
       this._memaoDrawCurrent();
@@ -1032,6 +1132,7 @@
         axe_strike:"axe_strike",hoe:"hoe",
         slash:"slash", hurt:"hurt", 
         downed:"downed", death:"death",
+        eat:"eat", drink:"drink", laugh:"laugh", wave:"wave", think:"think", shrug:"shrug", sit:"sit", read:"read", paint:"paint",
         revive:"revive"
 
       };
@@ -1043,6 +1144,9 @@
       delete st.debugFps;
       st.mode = "manual";
       st.action = action;
+      st._revision = (st._revision || 0) + 1;
+      st.repeatLastTwo = args.RepeatLastTwo === "true" && ["wave", "laugh", "drink"].includes(action);
+      st.repeatCount = repeatCount(args.RepeatCount);
       st.dir = dir;
       st.loop = forceHoldLastFrame ? false : (action === "downed" || args.Loop === "true");
       st.holdLastFrame = forceHoldLastFrame || (args.HoldLastFrame === "true");
@@ -1069,14 +1173,18 @@
     this._speedIndex = 3;
     this._speeds = [0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4];
     this._loop = true;
+    this._repeatLastTwo = false;
+    this._repeatCount = 3;
     Window_Command.prototype.initialize.call(this, rect);
   };
   Window_MemaoDebug.prototype.makeCommandList = function() {
     this.addCommand(`Speed: ${this._speeds[this._speedIndex]}x`, "speed");
     this.addCommand(`Playback: ${this._loop ? "Loop" : "Once"}`, "playback");
+    this.addCommand(`Repeat last 2: ${this._repeatLastTwo ? "On" : "Off"}`, "repeatEnding");
+    this.addCommand(`Extra repeats: ${this._repeatCount}`, "repeatCount");
     this.addCommand("Replay", "replay");
     for (const action of this._actions) {
-      this.addCommand(action.replace(/_/g, " "), "preview", true, action);
+      this.addCommand(action === "paint" ? "paint (Left/Right)" : action.replace(/_/g, " "), "preview", true, action);
     }
     this.addCommand("Stop / Close", "cancel");
   };
@@ -1095,6 +1203,10 @@
       this._speedIndex = (this._speedIndex + step + this._speeds.length) % this._speeds.length;
     } else if (this.currentSymbol() === "playback") {
       this._loop = !this._loop;
+    } else if (this.currentSymbol() === "repeatEnding") {
+      this._repeatLastTwo = !this._repeatLastTwo;
+    } else if (this.currentSymbol() === "repeatCount") {
+      this._repeatCount = (this._repeatCount + step + 100) % 100;
     } else {
       return;
     }
@@ -1102,11 +1214,11 @@
     if (this._onSettingsChanged) this._onSettingsChanged();
   };
   Window_MemaoDebug.prototype.cursorRight = function(wrap) {
-    if (["speed", "playback"].includes(this.currentSymbol())) this.changeSetting(1);
+    if (["speed", "playback", "repeatEnding", "repeatCount"].includes(this.currentSymbol())) this.changeSetting(1);
     else Window_Command.prototype.cursorRight.call(this, wrap);
   };
   Window_MemaoDebug.prototype.cursorLeft = function(wrap) {
-    if (["speed", "playback"].includes(this.currentSymbol())) this.changeSetting(-1);
+    if (["speed", "playback", "repeatEnding", "repeatCount"].includes(this.currentSymbol())) this.changeSetting(-1);
     else Window_Command.prototype.cursorLeft.call(this, wrap);
   };
 
@@ -1177,8 +1289,9 @@
     }
     const actions = [
       "idle", "walk", "run", "pickup", "pickaxe", "axe_chop", "plant",
-      "water", "reap", "slash", "hurt", "downed", "death", "hoe", "axe_strike", "revive"
-    ].filter(action => targets.every(target => {
+      "water", "reap", "slash", "hurt", "downed", "death", "hoe", "axe_strike", "revive",
+      "eat", "drink", "laugh", "wave", "think", "shrug", "sit", "read", "paint"
+    ].filter(action => targets.some(target => {
       const base = (action === "revive" ? "death" : action) + target.direction;
       return [base, base + "_a", base + "_b"].some(name => RANGE[name]?.frames.length);
     }));
@@ -1217,16 +1330,19 @@
         : action === "run" ? DASH_FPS : ACTION_FPS;
       const fps = Math.min(60, normalFps * win._speeds[win._speedIndex]);
       for (const target of targets) {
+        const base = (action === "revive" ? "death" : action) + target.direction;
+        const available = [base, base + "_a", base + "_b"].some(name => RANGE[name]?.frames.length);
         PluginManager.callCommand(this, PLUGIN, "PlayAction", {
-          Target: "eventId", EventId: String(target.id), Action: action,
+          Target: "eventId", EventId: String(target.id), Action: available ? action : "idle",
           Direction: target.direction.toLowerCase(), Loop: "true", Wait: "false",
-          HoldLastFrame: "false"
+          HoldLastFrame: "false", RepeatLastTwo: String(win._repeatLastTwo),
+          RepeatCount: String(win._repeatCount)
         });
         // Override death's normal hold behavior according to the preview controls.
         const st = memaoState($gameMap.event(target.id));
         st.loop = win._loop;
         st.holdLastFrame = !win._loop;
-        st.debugFps = fps;
+        st.debugFps = available ? fps : IDLE_FPS;
       }
       const sprites = scene._spriteset?._characterSprites || [];
       for (const spr of sprites) {
@@ -1240,6 +1356,8 @@
     };
     win.setHandler("speed", () => { win.changeSetting(1); win.activate(); });
     win.setHandler("playback", () => { win.changeSetting(1); win.activate(); });
+    win.setHandler("repeatEnding", () => { win.changeSetting(1); win.activate(); });
+    win.setHandler("repeatCount", () => { win.changeSetting(1); win.activate(); });
     win.setHandler("replay", replay);
     win.setHandler("preview", replay);
     win.setHandler("cancel", () => closeMemaoDebug(scene));
