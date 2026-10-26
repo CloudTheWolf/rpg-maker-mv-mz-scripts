@@ -1,10 +1,23 @@
 /*:
  * @target MZ
- * @plugindesc v1.1 Memao SE Addon — Play sound effects on specific frames for each animation type (Idle/Walk/Run/Pickup/Pickaxe/Axe/Plant/Water/Reap)
+ * @plugindesc v1.6 Memao SE Addon — Frame sounds for all animations, including Hoe and Axe Strike
  * @author CloudTheWolf
  *
  * @help
- * Add Sound Effects To Cloud_MemaoAnimatorMZ. 
+ * Add Sound Effects To Cloud_MemaoAnimatorMZ.
+ * Load below Cloud_MemaoAnimatorMZ.
+ * Supports idle, walk, run, pickup, pickaxe, axe_chop, axe_strike, hoe,
+ * plant, water, reap, slash, hurt, downed, death, revive, eat, drink, laugh,
+ * wave, think, shrug, sit, read and paint (left/right only).
+ * Axe settings control axe_chop. Axe Strike has its own settings; older projects
+ * without Axe Strike settings continue using Axe settings until configured.
+ * Frame Mode chooses animation frame numbers or positions in the playback sequence.
+ * Animation mode repeats sounds when Wave/Laugh/Drink repeat their final two frames,
+ * and follows the original frame numbers during Drink/Revive reverse playback.
+ * Playback mode counts the entire expanded sequence, including repeats and reverse.
+ * Existing settings without Frame Mode keep playback numbering for compatibility.
+ * Slow Downed loops trigger once per configured frame each cycle.
+ * Debug speed changes and Replay restart sound triggers; held frames play once.
  *
  * Tips:
  * - Footsteps Walk/Run: frame "2,5".
@@ -13,59 +26,106 @@
  *
  * @param Idle
  * @type struct<ActionSE>
- * @default {"Enabled":"false","SE":"{\"Name\":\"\",\"Volume\":\"75\",\"Pitch\":\"100\",\"Pan\":\"0\"}","Frames":"","OnlyManual":"false"}
+ * @default {"Enabled":"false","SE":"{\"Name\":\"\",\"Volume\":\"75\",\"Pitch\":\"100\",\"Pan\":\"0\"}","Frames":"","OnlyManual":"false","FrameMode":"animation"}
  *
  * @param Walk
  * @type struct<ActionSE>
- * @default {"Enabled":"false","SE":"{\"Name\":\"\",\"Volume\":\"75\",\"Pitch\":\"100\",\"Pan\":\"0\"}","Frames":"2,5","OnlyManual":"false"}
+ * @default {"Enabled":"false","SE":"{\"Name\":\"\",\"Volume\":\"75\",\"Pitch\":\"100\",\"Pan\":\"0\"}","Frames":"2,5","OnlyManual":"false","FrameMode":"animation"}
  *
  * @param Run
  * @type struct<ActionSE>
- * @default {"Enabled":"false","SE":"{\"Name\":\"\",\"Volume\":\"75\",\"Pitch\":\"100\",\"Pan\":\"0\"}","Frames":"2,5","OnlyManual":"false"}
+ * @default {"Enabled":"false","SE":"{\"Name\":\"\",\"Volume\":\"75\",\"Pitch\":\"100\",\"Pan\":\"0\"}","Frames":"2,5","OnlyManual":"false","FrameMode":"animation"}
  *
  * @param Pickup
  * @type struct<ActionSE>
- * @default {"Enabled":"false","SE":"{\"Name\":\"\",\"Volume\":\"75\",\"Pitch\":\"100\",\"Pan\":\"0\"}","Frames":"2","OnlyManual":"true"}
+ * @default {"Enabled":"false","SE":"{\"Name\":\"\",\"Volume\":\"75\",\"Pitch\":\"100\",\"Pan\":\"0\"}","Frames":"2","OnlyManual":"true","FrameMode":"animation"}
  *
  * @param Pickaxe
  * @type struct<ActionSE>
- * @default {"Enabled":"false","SE":"{\"Name\":\"\",\"Volume\":\"75\",\"Pitch\":\"100\",\"Pan\":\"0\"}","Frames":"2","OnlyManual":"true"}
+ * @default {"Enabled":"false","SE":"{\"Name\":\"\",\"Volume\":\"75\",\"Pitch\":\"100\",\"Pan\":\"0\"}","Frames":"2","OnlyManual":"true","FrameMode":"animation"}
  *
  * @param Axe
+ * @text Axe Chop
  * @type struct<ActionSE>
- * @default {"Enabled":"true","SE":"{\"Name\":\"\",\"Volume\":\"75\",\"Pitch\":\"100\",\"Pan\":\"0\"}","Frames":"23,"OnlyManual":"true"}
+ * @default {"Enabled":"true","SE":"{\"Name\":\"\",\"Volume\":\"75\",\"Pitch\":\"100\",\"Pan\":\"0\"}","Frames":"4","OnlyManual":"true","FrameMode":"animation"}
+ *
+ * @param AxeStrike
+ * @text Axe Strike
+ * @type struct<ActionSE>
+ * @default {"Enabled":"false","SE":"{\"Name\":\"\",\"Volume\":\"75\",\"Pitch\":\"100\",\"Pan\":\"0\"}","Frames":"4","OnlyManual":"true","FrameMode":"animation"}
+ *
+ * @param Hoe
+ * @text Hoe
+ * @type struct<ActionSE>
+ * @default {"Enabled":"false","SE":"{\"Name\":\"\",\"Volume\":\"75\",\"Pitch\":\"100\",\"Pan\":\"0\"}","Frames":"4","OnlyManual":"true","FrameMode":"animation"}
  *
  * @param Plant
  * @type struct<ActionSE>
- * @default {"Enabled":"false","SE":"{\"Name\":\"\",\"Volume\":\"75\",\"Pitch\":\"100\",\"Pan\":\"0\"}","Frames":"2","OnlyManual":"true"}
+ * @default {"Enabled":"false","SE":"{\"Name\":\"\",\"Volume\":\"75\",\"Pitch\":\"100\",\"Pan\":\"0\"}","Frames":"2","OnlyManual":"true","FrameMode":"animation"}
  *
  * @param Water
  * @type struct<ActionSE>
- * @default {"Enabled":"false","SE":"{\"Name\":\"\",\"Volume\":\"75\",\"Pitch\":\"100\",\"Pan\":\"0\"}","Frames":"2","OnlyManual":"true"}
+ * @default {"Enabled":"false","SE":"{\"Name\":\"\",\"Volume\":\"75\",\"Pitch\":\"100\",\"Pan\":\"0\"}","Frames":"2","OnlyManual":"true","FrameMode":"animation"}
  *
  * @param Reap
  * @type struct<ActionSE>
- * @default {"Enabled":"false","SE":"{\"Name\":\"\",\"Volume\":\"75\",\"Pitch\":\"100\",\"Pan\":\"0\"}","Frames":"2","OnlyManual":"true"}
+ * @default {"Enabled":"false","SE":"{\"Name\":\"\",\"Volume\":\"75\",\"Pitch\":\"100\",\"Pan\":\"0\"}","Frames":"2","OnlyManual":"true","FrameMode":"animation"}
  * 
  * @param Slash
  * @type struct<ActionSE>
- * @default {"Enabled":"false","SE":"{\"Name\":\"\",\"Volume\":\"75\",\"Pitch\":\"100\",\"Pan\":\"0\"}","Frames":"2","OnlyManual":"true"}
+ * @default {"Enabled":"false","SE":"{\"Name\":\"\",\"Volume\":\"75\",\"Pitch\":\"100\",\"Pan\":\"0\"}","Frames":"2","OnlyManual":"true","FrameMode":"animation"}
  * 
  * @param Hurt
  * @type struct<ActionSE>
- * @default {"Enabled":"false","SE":"{\"Name\":\"\",\"Volume\":\"75\",\"Pitch\":\"100\",\"Pan\":\"0\"}","Frames":"2","OnlyManual":"true"}
+ * @default {"Enabled":"false","SE":"{\"Name\":\"\",\"Volume\":\"75\",\"Pitch\":\"100\",\"Pan\":\"0\"}","Frames":"2","OnlyManual":"true","FrameMode":"animation"}
  * 
  * @param Downed
  * @type struct<ActionSE>
- * @default {"Enabled":"false","SE":"{\"Name\":\"\",\"Volume\":\"75\",\"Pitch\":\"100\",\"Pan\":\"0\"}","Frames":"2","OnlyManual":"true"}
+ * @default {"Enabled":"false","SE":"{\"Name\":\"\",\"Volume\":\"75\",\"Pitch\":\"100\",\"Pan\":\"0\"}","Frames":"2","OnlyManual":"true","FrameMode":"animation"}
  * 
  * @param Death
  * @type struct<ActionSE>
- * @default {"Enabled":"false","SE":"{\"Name\":\"\",\"Volume\":\"75\",\"Pitch\":\"100\",\"Pan\":\"0\"}","Frames":"2","OnlyManual":"true"}
+ * @default {"Enabled":"false","SE":"{\"Name\":\"\",\"Volume\":\"75\",\"Pitch\":\"100\",\"Pan\":\"0\"}","Frames":"2","OnlyManual":"true","FrameMode":"animation"}
  * 
+ * @param Eat
+ * @type struct<ActionSE>
+ * @default {"Enabled":"false","SE":"{\"Name\":\"\",\"Volume\":\"75\",\"Pitch\":\"100\",\"Pan\":\"0\"}","Frames":"2","OnlyManual":"true","FrameMode":"animation"}
+ *
+ * @param Drink
+ * @type struct<ActionSE>
+ * @default {"Enabled":"false","SE":"{\"Name\":\"\",\"Volume\":\"75\",\"Pitch\":\"100\",\"Pan\":\"0\"}","Frames":"2","OnlyManual":"true","FrameMode":"animation"}
+ *
+ * @param Laugh
+ * @type struct<ActionSE>
+ * @default {"Enabled":"false","SE":"{\"Name\":\"\",\"Volume\":\"75\",\"Pitch\":\"100\",\"Pan\":\"0\"}","Frames":"2","OnlyManual":"true","FrameMode":"animation"}
+ *
+ * @param Wave
+ * @type struct<ActionSE>
+ * @default {"Enabled":"false","SE":"{\"Name\":\"\",\"Volume\":\"75\",\"Pitch\":\"100\",\"Pan\":\"0\"}","Frames":"2","OnlyManual":"true","FrameMode":"animation"}
+ *
+ * @param Think
+ * @type struct<ActionSE>
+ * @default {"Enabled":"false","SE":"{\"Name\":\"\",\"Volume\":\"75\",\"Pitch\":\"100\",\"Pan\":\"0\"}","Frames":"2","OnlyManual":"true","FrameMode":"animation"}
+ *
+ * @param Shrug
+ * @type struct<ActionSE>
+ * @default {"Enabled":"false","SE":"{\"Name\":\"\",\"Volume\":\"75\",\"Pitch\":\"100\",\"Pan\":\"0\"}","Frames":"2","OnlyManual":"true","FrameMode":"animation"}
+ *
+ * @param Sit
+ * @type struct<ActionSE>
+ * @default {"Enabled":"false","SE":"{\"Name\":\"\",\"Volume\":\"75\",\"Pitch\":\"100\",\"Pan\":\"0\"}","Frames":"2","OnlyManual":"true","FrameMode":"animation"}
+ *
+ * @param Read
+ * @type struct<ActionSE>
+ * @default {"Enabled":"false","SE":"{\"Name\":\"\",\"Volume\":\"75\",\"Pitch\":\"100\",\"Pan\":\"0\"}","Frames":"2","OnlyManual":"true","FrameMode":"animation"}
+ *
+ * @param Paint
+ * @type struct<ActionSE>
+ * @default {"Enabled":"false","SE":"{\"Name\":\"\",\"Volume\":\"75\",\"Pitch\":\"100\",\"Pan\":\"0\"}","Frames":"2","OnlyManual":"true","FrameMode":"animation"}
+ *
  * @param Revive
  * @type struct<ActionSE>
- * @default {"Enabled":"false","SE":"{\"Name\":\"\",\"Volume\":\"75\",\"Pitch\":\"100\",\"Pan\":\"0\"}","Frames":"2","OnlyManual":"true"}
+ * @default {"Enabled":"false","SE":"{\"Name\":\"\",\"Volume\":\"75\",\"Pitch\":\"100\",\"Pan\":\"0\"}","Frames":"2","OnlyManual":"true","FrameMode":"animation"}
  */
 
 /*~struct~SE:
@@ -98,8 +158,18 @@
  * @param SE
  * @type struct<SE>
  * @default {"Name":"","Volume":"75","Pitch":"100","Pan":"0"}
+ * @param FrameMode
+ * @text Frame Mode
+ * @type select
+ * @option Animation frame (repeat sounds with frames)
+ * @value animation
+ * @option Playback position (entire sequence)
+ * @value playback
+ * @default animation
+ *
  * @param Frames
  * @text Trigger Frames (1-based)
+ * @desc Animation mode uses original frame numbers; Playback mode counts all repeated/reversed steps.
  * @type string
  * @default
  * @param OnlyManual
@@ -126,6 +196,7 @@
       enabled: String(raw.Enabled||"false")==="true",
       onlyManual: String(raw.OnlyManual||"false")==="true",
       framesSet: new Set(frames),
+      frameMode: raw.FrameMode === "animation" ? "animation" : "playback",
       se: {
         name: String(se.Name||""),
         volume: Number(se.Volume ?? 90),
@@ -142,7 +213,8 @@
     pickup:         parseAction("Pickup"),
     pickaxe:        parseAction("Pickaxe"),
     axe_chop:       parseAction("Axe"),
-    axe_strike:     parseAction("Axe"),
+    axe_strike:     parseAction(Params.AxeStrike ? "AxeStrike" : "Axe"),
+    hoe:            parseAction("Hoe"),
     plant:          parseAction("Plant"),
     water:          parseAction("Water"),
     reap:           parseAction("Reap"),
@@ -150,7 +222,16 @@
     hurt:           parseAction("Hurt"),
     downed:           parseAction("Downed"),
     death:           parseAction("Death"),
-    revive:           parseAction("Revive")
+    revive:           parseAction("Revive"),
+    eat: parseAction("Eat"),
+    drink: parseAction("Drink"),
+    laugh: parseAction("Laugh"),
+    wave: parseAction("Wave"),
+    think: parseAction("Think"),
+    shrug: parseAction("Shrug"),
+    sit: parseAction("Sit"),
+    read: parseAction("Read"),
+    paint: parseAction("Paint")
   };
 
   // ---------- helpers ----------
@@ -177,6 +258,19 @@
   function periodOf(spr){
     // Prefer animator’s ping-pong period if present; otherwise length of seq.
     return (spr._mPeriod || (spr._mSeq ? spr._mSeq.length : 0)) | 0;
+  }
+
+  function animationFrameOf(spr, idx) {
+    const current = spr._mSeq?.[idx];
+    if (!current) return idx + 1;
+    let frame = 0;
+    for (const range of spr._mRanges || []) {
+      for (const col of range.frames || []) {
+        frame++;
+        if (range.row === current.row && col === current.col) return frame;
+      }
+    }
+    return idx + 1;
   }
 
   function playSe(se){
@@ -212,28 +306,37 @@
         if (!c) { c = { key, idx, period: per, fired: new Map() }; this.cache.set(spr, c); }
 
         // detect wrap or state swap
-        const wrapped = (key !== c.key) || (idx < c.idx);
+        const st = spr._character?._memaoState || {};
+        const cycles = st._cycles || 0;
+        const wrapped = (key !== c.key) || (idx < c.idx) ||
+          (spr._mSeq !== c.sequence) || (st.loop && cycles !== c.cycles);
 
         // current action + config
         const act = actionFromSprite(spr);
         const cfg = CONFIG[act];
         if (cfg && cfg.enabled && cfg.se && cfg.se.name) {
           // OnlyManual?
-          const st = spr._character?._memaoState || {};
           if (!cfg.onlyManual || st.mode === "manual") {
             // per-action per-cycle dedupe
             let bucket = c.fired.get(act);
             if (!bucket || wrapped) { bucket = new Set(); c.fired.set(act, bucket); }
-            const frame1 = (idx % per) + 1; // 1-based frame in this timeline
-            if (cfg.framesSet.has(frame1) && !bucket.has(frame1)) {
-              bucket.add(frame1);
-              playSe(cfg.se);
+            if (cfg.frameMode === "animation") {
+              // Fire once on each entry, even if the same source frame repeats later.
+              const entered = !c.observed || wrapped || idx !== c.idx;
+              if (entered && cfg.framesSet.has(animationFrameOf(spr, idx))) playSe(cfg.se);
+            } else {
+              const frame1 = (idx % per) + 1;
+              if (cfg.framesSet.has(frame1) && !bucket.has(frame1)) {
+                bucket.add(frame1);
+                playSe(cfg.se);
+              }
             }
           }
         }
 
         // update cache
         c.key = key; c.idx = idx; c.period = per;
+        c.sequence = spr._mSeq; c.cycles = cycles; c.observed = true;
       }
     }
   };
