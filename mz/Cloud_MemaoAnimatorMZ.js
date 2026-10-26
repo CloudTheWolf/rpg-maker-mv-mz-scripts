@@ -1,6 +1,6 @@
 /*:
  * @target MZ
- * @plugindesc Ver 1.4 - Add support for Memao Sprite Sheet Creator sprites
+ * @plugindesc Ver 1.5 - Add support for Memao Sprite Sheet Creator sprites
  * @author CloudTheWolf
  * @url https://sleeping-robot-games.itch.io/sprite-sheet-creator
  * @help
@@ -13,7 +13,20 @@
  * - Pixel-crisp scaling: forces NEAREST, disables mipmaps, rounds positions to whole pixels.
  * - Configurable offsets (default Y +8 px).
  * - Auto Idle/Walk/Run (run = player dashing).
+ * - Downed loops at 0.25x action speed until stopped or replaced.
  * - Plugin commands to play actions (axe/pickaxe/plant/water/pickup/reap/strike/hurt/downed/death) in facing dir.
+ * - Debug Command to test animations in-engine
+ *
+ * Debug: Animation Menu opens over the map so previews remain visible.
+ * Assign a different map event to Down, Left, Right and Up (0 skips a direction).
+ * Preview Graphic temporarily sets the test sheet (default: teo_$(memao)).
+ * Clear Preview Graphic to use existing event graphics / the player for blank events.
+ * Moving the menu cursor changes the animation on every assigned event together.
+ * Speed supports 0.25x to 4x; 1x uses configured idle/walk/run/action FPS.
+ * Playback switches between Loop and Once (hold final frame).
+ * Use Left/Right or OK on controls. OK on an animation replays it.
+ * Cancel / Stop closes the menu and restores automatic animation and movement.
+ * Includes revive (death in reverse), and respects RowMapOverride.
  *
  * If your sheet layout differs, paste JSON into RowMapOverride (defaults to 8×20 map).
  *
@@ -111,7 +124,7 @@
  * @type select
  * @option axe_chop
  * @option axe_strike
- * @option hoe 
+ * @option hoe
  * @option idle
  * @option pickaxe
  * @option pickup
@@ -160,6 +173,45 @@
  * @type number
  * @min 1
  * @default 1
+ *
+ * @command Debug
+ * @text Debug: Animation Menu
+ * @desc Preview animations on four directional events together. Cancel stops previews.
+ *
+ * @arg PreviewGraphic
+ * @text Preview Graphic
+ * @type file
+ * @dir img/characters/
+ * @default teo_$(memao)
+ * @desc Sheet used for all preview events. Clear to use existing graphics / player for blank events.
+ *
+ * @arg DownEventId
+ * @text Down Event ID
+ * @type number
+ * @min 0
+ * @default 0
+ * @desc Map event to preview facing down. 0 skips this direction.
+ *
+ * @arg LeftEventId
+ * @text Left Event ID
+ * @type number
+ * @min 0
+ * @default 0
+ * @desc Map event to preview facing left. 0 skips this direction.
+ *
+ * @arg RightEventId
+ * @text Right Event ID
+ * @type number
+ * @min 0
+ * @default 0
+ * @desc Map event to preview facing right. 0 skips this direction.
+ *
+ * @arg UpEventId
+ * @text Up Event ID
+ * @type number
+ * @min 0
+ * @default 0
+ * @desc Map event to preview facing up. 0 skips this direction.
  *
  * @command SetIdleAnimation
  * @text Set Idle Animation
@@ -626,7 +678,7 @@
     if (st.mode === "manual") {
       const manualDir = st.dir || dir;
       ranges = pickActionRange(st.action, manualDir);
-      fps = ACTION_FPS;
+      fps = st.debugFps ?? (ACTION_FPS * (st.action === "downed" ? 0.25 : 1));
       key = `act:${st.action}:${manualDir}`;
     } else if (!movingSmooth) {
       ranges = pickIdleRange(dir);                 // 4 frames
@@ -694,10 +746,12 @@
     }
 
     // stable clock
-    const framesPerTick = 60 / Math.max(1, this._mFps);
+    const framesPerTick = 60 / Math.max(0.01, this._mFps);
     this._mTimer += 1;
-    if (this._mTimer >= framesPerTick && this._mSeq && this._mSeq.length) {
-      this._mTimer = 0;
+    if (this._mTimer >= framesPerTick && this._mSeq && this._mSeq.length &&
+        !(st.mode === "manual" && st.done && !st.loop && st.holdLastFrame)) {
+      // Carry fractional ticks for accurate debug speed (e.g. 7 FPS walking).
+      this._mTimer = st.debugFps != null ? this._mTimer - framesPerTick : 0;
       if (st.mode === "manual") {
         const lastIndex = this._mSeq.length - 1;
 
@@ -986,10 +1040,11 @@
       const st = memaoState(ch);
       const forceHoldLastFrame = action === "death"; // We'll always hold last frame on death
 
+      delete st.debugFps;
       st.mode = "manual";
       st.action = action;
       st.dir = dir;
-      st.loop = forceHoldLastFrame ? false : (args.Loop === "true");
+      st.loop = forceHoldLastFrame ? false : (action === "downed" || args.Loop === "true");
       st.holdLastFrame = forceHoldLastFrame || (args.HoldLastFrame === "true");
       st.done = false;
       // init cycle counter if missing
@@ -1006,6 +1061,231 @@
     
   });
 
+  function Window_MemaoDebug() { this.initialize(...arguments); }
+  Window_MemaoDebug.prototype = Object.create(Window_Command.prototype);
+  Window_MemaoDebug.prototype.constructor = Window_MemaoDebug;
+  Window_MemaoDebug.prototype.initialize = function(rect, actions) {
+    this._actions = actions;
+    this._speedIndex = 3;
+    this._speeds = [0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4];
+    this._loop = true;
+    Window_Command.prototype.initialize.call(this, rect);
+  };
+  Window_MemaoDebug.prototype.makeCommandList = function() {
+    this.addCommand(`Speed: ${this._speeds[this._speedIndex]}x`, "speed");
+    this.addCommand(`Playback: ${this._loop ? "Loop" : "Once"}`, "playback");
+    this.addCommand("Replay", "replay");
+    for (const action of this._actions) {
+      this.addCommand(action.replace(/_/g, " "), "preview", true, action);
+    }
+    this.addCommand("Stop / Close", "cancel");
+  };
+  Window_MemaoDebug.prototype.update = function() {
+    Window_Command.prototype.update.call(this);
+    if (this.active && this._previewIndex !== this.index()) {
+      this._previewIndex = this.index();
+      if (this.currentSymbol() === "preview" && this._onPreview) {
+        this._onPreview(this.currentExt());
+      }
+    }
+  };
+
+  Window_MemaoDebug.prototype.changeSetting = function(step) {
+    if (this.currentSymbol() === "speed") {
+      this._speedIndex = (this._speedIndex + step + this._speeds.length) % this._speeds.length;
+    } else if (this.currentSymbol() === "playback") {
+      this._loop = !this._loop;
+    } else {
+      return;
+    }
+    this.refresh();
+    if (this._onSettingsChanged) this._onSettingsChanged();
+  };
+  Window_MemaoDebug.prototype.cursorRight = function(wrap) {
+    if (["speed", "playback"].includes(this.currentSymbol())) this.changeSetting(1);
+    else Window_Command.prototype.cursorRight.call(this, wrap);
+  };
+  Window_MemaoDebug.prototype.cursorLeft = function(wrap) {
+    if (["speed", "playback"].includes(this.currentSymbol())) this.changeSetting(-1);
+    else Window_Command.prototype.cursorLeft.call(this, wrap);
+  };
+
+  function closeMemaoDebug(scene) {
+    const session = scene._memaoDebugSession;
+    if (!session) return;
+    for (const target of session.targets) {
+      PluginManager.callCommand(session.interpreter, PLUGIN, "StopAction", {
+        Target: "eventId", EventId: String(target.id)
+      });
+      if (target.originalImage) {
+        const ch = $gameMap.event(target.id);
+        if (ch) ch.setImage(target.originalImage.name, target.originalImage.index);
+      }
+    }
+    const win = scene._memaoDebugWindow;
+    win.deactivate();
+    win.hide();
+    scene._windowLayer.removeChild(win);
+    win.destroy();
+    scene._memaoDebugWindow = null;
+    scene._memaoDebugSession = null;
+  }
+
+  PluginManager.registerCommand(PLUGIN, "Debug", function(args) {
+    const scene = SceneManager._scene;
+    if (!(scene instanceof Scene_Map)) return;
+    closeMemaoDebug(scene);
+    const previewGraphic = String(args.PreviewGraphic ?? "teo_$(memao)").trim();
+    if (previewGraphic && !isMemaoName(previewGraphic)) {
+      console.warn(PLUGIN, "Debug: Preview Graphic must be a Memao character sheet.");
+      return;
+    }
+    const targets = [];
+    const used = new Set();
+    for (const direction of ["Down", "Left", "Right", "Up"]) {
+      const id = Number(args[direction + "EventId"] || 0);
+      if (!id) continue;
+      const ch = $gameMap.event(id);
+      if (!ch) {
+        console.warn(PLUGIN, `Debug: ${direction} event ID ${id} does not exist on this map.`);
+        return;
+      }
+      if (used.has(id)) {
+        console.warn(PLUGIN, `Debug: event ID ${id} is assigned to more than one direction.`);
+        return;
+      }
+      let originalImage = null;
+      if (previewGraphic) {
+        if (ch.tileId()) {
+          console.warn(PLUGIN, `Debug: ${direction} event ID ${id} uses a tile graphic; choose a character event.`);
+          return;
+        }
+        originalImage = { name: ch.characterName(), index: ch.characterIndex() };
+      } else if (!wantsMemao(ch)) {
+        if (ch.characterName() || ch.tileId() || !wantsMemao($gamePlayer)) {
+          console.warn(PLUGIN, `Debug: ${direction} event ID ${id} needs a Memao graphic, or a blank graphic with a Memao player.`);
+          return;
+        }
+        originalImage = { name: ch.characterName(), index: ch.characterIndex() };
+      }
+      used.add(id);
+      targets.push({ id, direction, originalImage });
+    }
+    if (!targets.length) {
+      console.warn(PLUGIN, "Debug: assign at least one directional event ID in the plugin command.");
+      return;
+    }
+    const actions = [
+      "idle", "walk", "run", "pickup", "pickaxe", "axe_chop", "plant",
+      "water", "reap", "slash", "hurt", "downed", "death", "hoe", "axe_strike", "revive"
+    ].filter(action => targets.every(target => {
+      const base = (action === "revive" ? "death" : action) + target.direction;
+      return [base, base + "_a", base + "_b"].some(name => RANGE[name]?.frames.length);
+    }));
+    if (!actions.length) return;
+
+    // Validate every target before changing any event graphics.
+    for (const target of targets) {
+      if (target.originalImage) {
+        $gameMap.event(target.id).setImage(
+          previewGraphic || $gamePlayer.characterName(),
+          previewGraphic ? 0 : $gamePlayer.characterIndex()
+        );
+      }
+    }
+    const width = Math.min(240, Graphics.boxWidth);
+    const height = Math.min(420, Graphics.boxHeight);
+    const win = new Window_MemaoDebug(new Rectangle(0, 0, width, height), actions);
+    const session = { targets, interpreter: this, action: actions[0] };
+    scene._memaoDebugSession = session;
+    scene._memaoDebugWindow = win;
+    win._onPreview = action => {
+      if (action !== session.action) {
+        if (action === "downed") {
+          session.previousPlayback = { speedIndex: win._speedIndex, loop: win._loop };
+          win._speedIndex = 0; // Downed defaults to 0.25x and looping.
+          win._loop = true;
+        } else if (session.action === "downed" && session.previousPlayback) {
+          win._speedIndex = session.previousPlayback.speedIndex;
+          win._loop = session.previousPlayback.loop;
+          session.previousPlayback = null;
+        }
+        win.refresh();
+      }
+      session.action = action;
+      const normalFps = action === "idle" ? IDLE_FPS : action === "walk" ? WALK_FPS
+        : action === "run" ? DASH_FPS : ACTION_FPS;
+      const fps = Math.min(60, normalFps * win._speeds[win._speedIndex]);
+      for (const target of targets) {
+        PluginManager.callCommand(this, PLUGIN, "PlayAction", {
+          Target: "eventId", EventId: String(target.id), Action: action,
+          Direction: target.direction.toLowerCase(), Loop: "true", Wait: "false",
+          HoldLastFrame: "false"
+        });
+        // Override death's normal hold behavior according to the preview controls.
+        const st = memaoState($gameMap.event(target.id));
+        st.loop = win._loop;
+        st.holdLastFrame = !win._loop;
+        st.debugFps = fps;
+      }
+      const sprites = scene._spriteset?._characterSprites || [];
+      for (const spr of sprites) {
+        if (targets.some(target => $gameMap.event(target.id) === spr?._character)) spr._mKey = "";
+      }
+    };
+    win._onSettingsChanged = () => win._onPreview(session.action);
+    const replay = () => {
+      win._onPreview(win.currentSymbol() === "preview" ? win.currentExt() : session.action);
+      win.activate();
+    };
+    win.setHandler("speed", () => { win.changeSetting(1); win.activate(); });
+    win.setHandler("playback", () => { win.changeSetting(1); win.activate(); });
+    win.setHandler("replay", replay);
+    win.setHandler("preview", replay);
+    win.setHandler("cancel", () => closeMemaoDebug(scene));
+    scene.addWindow(win);
+    $gameTemp.clearDestination();
+    this.setWaitMode("memaoDebug");
+    win._onPreview(actions[0]);
+    win._previewIndex = win.index();
+  });
+
+  // Keep the map rendering and animating while the command owns player input.
+  const _debugCanMove = Game_Player.prototype.canMove;
+  Game_Player.prototype.canMove = function() {
+    if (SceneManager._scene?._memaoDebugSession) return false;
+    return _debugCanMove.call(this);
+  };
+  const _debugIsMenuEnabled = Scene_Map.prototype.isMenuEnabled;
+  Scene_Map.prototype.isMenuEnabled = function() {
+    if (this._memaoDebugSession || this._memaoDebugInputFrame === Graphics.frameCount) return false;
+    return _debugIsMenuEnabled.call(this);
+  };
+  const _debugMapTouchOk = Scene_Map.prototype.isMapTouchOk;
+  Scene_Map.prototype.isMapTouchOk = function() {
+    if (this._memaoDebugSession || this._memaoDebugInputFrame === Graphics.frameCount) return false;
+    return _debugMapTouchOk.call(this);
+  };
+  const _debugMapUpdate = Scene_Map.prototype.update;
+  Scene_Map.prototype.update = function() {
+    if (this._memaoDebugSession) this._memaoDebugInputFrame = Graphics.frameCount;
+    _debugMapUpdate.call(this);
+  };
+  const _debugWaitMode = Game_Interpreter.prototype.updateWaitMode;
+  Game_Interpreter.prototype.updateWaitMode = function() {
+    if (this._waitMode === "memaoDebug") {
+      if (SceneManager._scene?._memaoDebugSession) return true;
+      this._waitMode = "";
+      return false;
+    }
+    return _debugWaitMode.call(this);
+  };
+  const _debugMapStop = Scene_Map.prototype.stop;
+  Scene_Map.prototype.stop = function() {
+    closeMemaoDebug(this);
+    _debugMapStop.call(this);
+  };
+
   // ───────────────────────────────────────────────
   // Plugin Command: Stop Action 
   // ───────────────────────────────────────────────  
@@ -1014,6 +1294,7 @@
     if (!ch) return;
 
     const st = memaoState(ch);
+    delete st.debugFps;
     st.mode = "auto";
     st.done = true;
     st.holdLastFrame = false;
