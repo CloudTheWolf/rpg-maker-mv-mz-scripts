@@ -1,0 +1,3 @@
+[submodule "u2u"]
+	path = u2u
+	url = https://github.com/CloudTheWolf/rpg-maker-u2u-plugins.git
